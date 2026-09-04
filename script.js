@@ -377,10 +377,14 @@ var Search = {
    Data layer (Supabase queries)
    --------------------------------------------------------- */
 var Data = {
+  // Every method below swallows fetch/network failures (e.g. Supabase not configured
+  // yet, offline, RLS misconfigured) into a safe empty default instead of leaving
+  // callers hanging on a rejected promise — renderers distinguish "loaded, nothing
+  // there" from "couldn't load" via the `error` flag where present. See spec §67.
   categoriesCache: null,
   getCategories: function (kind) {
     var self = this;
-    var p = this.categoriesCache ? Promise.resolve(this.categoriesCache) : supabaseClient.from('categories').select('*').order('sort_order').then(function (res) { self.categoriesCache = res.data || []; return self.categoriesCache; });
+    var p = this.categoriesCache ? Promise.resolve(this.categoriesCache) : supabaseClient.from('categories').select('*').order('sort_order').then(function (res) { self.categoriesCache = res.data || []; return self.categoriesCache; }).catch(function () { return []; });
     return p.then(function (all) { return kind ? all.filter(function (c) { return c.kind === kind; }) : all; });
   },
   listProducts: function (filters) {
@@ -401,23 +405,27 @@ var Data = {
     else if (filters.sort === 'price-desc') query = query.order('price', { ascending: false });
     else query = query.order('created_at', { ascending: false });
     if (filters.limit) query = query.limit(filters.limit);
-    return query.then(function (res) { return { products: (res.data || []).map(mapSupabaseProduct), count: res.count || 0, error: res.error }; });
+    return query.then(function (res) { return { products: (res.data || []).map(mapSupabaseProduct), count: res.count || 0, error: res.error }; })
+      .catch(function (err) { return { products: [], count: 0, error: err }; });
   },
   getProductBySlug: function (slug) {
     return supabaseClient.from('products').select(PRODUCT_SELECT).eq('slug', slug).eq('status', 'active').maybeSingle()
-      .then(function (res) { return res.data ? mapSupabaseProduct(res.data) : null; });
+      .then(function (res) { return res.data ? mapSupabaseProduct(res.data) : null; })
+      .catch(function () { return null; });
   },
   getProductsByIds: function (ids) {
     if (!ids.length) return Promise.resolve([]);
     return supabaseClient.from('products').select(PRODUCT_SELECT).in('id', ids).eq('status', 'active')
-      .then(function (res) { return (res.data || []).map(mapSupabaseProduct); });
+      .then(function (res) { return (res.data || []).map(mapSupabaseProduct); })
+      .catch(function () { return []; });
   },
   getLiveCampaign: function () {
-    return supabaseClient.from('campaigns').select('*').eq('status', 'live').limit(1).maybeSingle().then(function (res) { return res.data; });
+    return supabaseClient.from('campaigns').select('*').eq('status', 'live').limit(1).maybeSingle().then(function (res) { return res.data; }).catch(function () { return null; });
   },
   getApprovedReviews: function (limit) {
     return supabaseClient.from('reviews').select('*, products(name)').eq('status', 'approved').order('created_at', { ascending: false }).limit(limit || 6)
-      .then(function (res) { return res.data || []; });
+      .then(function (res) { return res.data || []; })
+      .catch(function () { return []; });
   }
 };
 
@@ -456,9 +464,9 @@ function productCardHtml(p) {
     '</div></div>';
 }
 
-function renderGridInto(sel, products, emptyMsg) {
+function renderGridInto(sel, products, emptyMsg, isError) {
   var el = qs(sel); if (!el) return;
-  if (!products.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">' + (emptyMsg || 'No products yet — check back soon.') + '</div>'; return; }
+  if (!products.length) { el.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">' + (isError ? 'Couldn’t load products right now — please try again shortly.' : (emptyMsg || 'No products yet — check back soon.')) + '</div>'; return; }
   el.innerHTML = products.map(productCardHtml).join('');
   observeReveal(el);
 }
@@ -497,12 +505,12 @@ function renderHome() {
     wrap.innerHTML = cats.map(function (c) { return '<a href="#/sarees?occasion=' + c.slug + '" class="chip" data-link>' + escapeHtml(c.name) + '</a>'; }).join('');
   });
 
-  Data.listProducts({ newArrival: true, limit: 8 }).then(function (r) { renderGridInto('#newArrivalsGrid', r.products, 'New arrivals will appear here soon.'); });
+  Data.listProducts({ newArrival: true, limit: 8 }).then(function (r) { renderGridInto('#newArrivalsGrid', r.products, 'New arrivals will appear here soon.', !!r.error); });
   Data.listProducts({ featured: true, limit: 8 }).then(function (r) {
-    document.getElementById('sectionFeaturedCollection').style.display = r.products.length ? '' : 'none';
-    renderGridInto('#featuredGrid', r.products);
+    document.getElementById('sectionFeaturedCollection').style.display = (r.products.length || r.error) ? '' : 'none';
+    renderGridInto('#featuredGrid', r.products, 'Featured picks are on the way.', !!r.error);
   });
-  Data.listProducts({ limit: 8 }).then(function (r) { renderGridInto('#moreStylesGrid', r.products, 'Our collection is on its way.'); });
+  Data.listProducts({ limit: 8 }).then(function (r) { renderGridInto('#moreStylesGrid', r.products, 'Our collection is on its way.', !!r.error); });
 
   Data.getLiveCampaign().then(function (c) {
     var section = document.getElementById('sectionCampaign');
@@ -539,7 +547,7 @@ function renderCatalog(routeParams, query) {
   renderFilterSidebar();
 
   Data.listProducts(filters).then(function (r) {
-    renderGridInto('#catalogGrid', r.products, 'No products match yet.');
+    renderGridInto('#catalogGrid', r.products, 'No products match yet.', !!r.error);
     qs('#catalogCount').textContent = r.count ? (r.count + ' piece' + (r.count === 1 ? '' : 's')) : '';
   });
 }
