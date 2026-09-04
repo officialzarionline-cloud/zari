@@ -1,0 +1,39 @@
+/* Zari Admin — clean, operational, no decorative animation (spec §38). */
+body { background: var(--cream-100); }
+.admin-gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.admin-gate-box { background: #fff; padding: 40px; border-radius: var(--radius-md); box-shadow: var(--shadow-card); width: 100%; max-width: 380px; }
+.admin-app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+.admin-sidebar { background: var(--maroon-950); color: var(--cream-200); display: flex; flex-direction: column; padding: 20px 0; }
+.admin-brand { display: flex; align-items: center; gap: 8px; padding: 0 20px 20px; }
+.admin-brand img { height: 24px; filter: brightness(0) invert(1); }
+.admin-brand span { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--gold-300); }
+.admin-sidebar nav { display: flex; flex-direction: column; }
+.admin-sidebar nav a { padding: 11px 20px; font-size: 13.5px; color: rgba(248,240,228,.75); border-left: 3px solid transparent; }
+.admin-sidebar nav a:hover { background: rgba(255,255,255,.04); }
+.admin-sidebar nav a.active { color: #fff; border-left-color: var(--gold-400); background: rgba(255,255,255,.06); }
+.admin-sidebar #adminLogoutBtn { color: rgba(248,240,228,.6); margin: 20px; text-align: left; }
+.admin-main { overflow-x: hidden; }
+.admin-topbar { background: #fff; border-bottom: 1px solid var(--line); padding: 18px 28px; }
+.admin-topbar h2 { margin: 0; font-family: var(--font-body); font-size: 18px; font-weight: 700; color: var(--maroon-900); }
+.admin-content { padding: 24px 28px; }
+.admin-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 28px; }
+@media (max-width: 1100px) { .admin-kpis { grid-template-columns: repeat(2, 1fr); } .admin-app { grid-template-columns: 1fr; } .admin-sidebar { display: none; } }
+.admin-kpi { background: #fff; border-radius: var(--radius-md); padding: 18px; box-shadow: var(--shadow-card); }
+.admin-kpi .label { font-size: 11.5px; text-transform: uppercase; color: var(--ink-soft); letter-spacing: .04em; }
+.admin-kpi .value { font-size: 24px; font-weight: 700; color: var(--maroon-900); margin-top: 6px; }
+.admin-table-wrap { background: #fff; border-radius: var(--radius-md); box-shadow: var(--shadow-card); overflow-x: auto; }
+table.admin-table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 640px; }
+table.admin-table th { text-align: left; padding: 12px 16px; background: var(--cream-100); color: var(--maroon-900); font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; }
+table.admin-table td { padding: 12px 16px; border-top: 1px solid var(--line); vertical-align: middle; }
+table.admin-table img.thumb { width: 40px; height: 52px; object-fit: cover; border-radius: 4px; }
+.status-pill { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; text-transform: capitalize; }
+.status-pending { background: #fdf1d6; color: #8a6414; }
+.status-confirmed, .status-active, .status-approved, .status-paid { background: #e2f1e5; color: var(--success); }
+.status-shipped, .status-out_for_delivery { background: #dde8fb; color: #2b4f9c; }
+.status-delivered { background: #e2f1e5; color: var(--success); }
+.status-cancelled, .status-failed, .status-rejected, .status-draft { background: #f3e4e4; color: var(--danger); }
+.admin-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; gap: 12px; flex-wrap: wrap; }
+.admin-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; background: #fff; padding: 24px; border-radius: var(--radius-md); box-shadow: var(--shadow-card); }
+@media (max-width: 700px) { .admin-form-grid { grid-template-columns: 1fr; } }
+.admin-form-grid .full { grid-column: 1 / -1; }
+.admin-checkbox { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }

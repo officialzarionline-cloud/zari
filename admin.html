@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zari Admin</title>
+<link rel="icon" href="assets/favicon.png" type="image/png">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+<link rel="stylesheet" href="admin.css?v=1">
+</head>
+<body>
+
+<div id="adminGate" class="admin-gate">
+  <div class="admin-gate-box">
+    <h1 class="display" style="margin:0 0 6px;">Zari Admin</h1>
+    <p style="color:var(--ink-soft);font-size:13.5px;margin:0 0 24px;">Sign in with your admin account.</p>
+    <form id="adminLoginForm">
+      <div class="field"><label>Email</label><input type="email" required id="adminEmail"></div>
+      <div class="field"><label>Password</label><input type="password" required id="adminPassword"></div>
+      <div class="field-error hidden" id="adminLoginError"></div>
+      <button class="btn btn-dark" style="width:100%;justify-content:center;" type="submit">Log In</button>
+    </form>
+  </div>
+</div>
+
+<div id="adminApp" class="admin-app hidden">
+  <aside class="admin-sidebar">
+    <div class="admin-brand"><img src="assets/logo.svg" alt="Zari"><span>Admin</span></div>
+    <nav id="adminNav">
+      <a href="#/admin/dashboard" data-admin-link data-key="dashboard">Dashboard</a>
+      <a href="#/admin/products" data-admin-link data-key="products">Products</a>
+      <a href="#/admin/orders" data-admin-link data-key="orders">Orders</a>
+      <a href="#/admin/customers" data-admin-link data-key="customers">Customers</a>
+      <a href="#/admin/categories" data-admin-link data-key="categories">Categories</a>
+      <a href="#/admin/collections" data-admin-link data-key="collections">Collections</a>
+      <a href="#/admin/campaigns" data-admin-link data-key="campaigns">Campaigns & Offers</a>
+      <a href="#/admin/reviews" data-admin-link data-key="reviews">Reviews</a>
+    </nav>
+    <button class="link-btn" id="adminLogoutBtn" style="margin-top:auto;">Log Out</button>
+  </aside>
+  <main class="admin-main">
+    <header class="admin-topbar"><h2 id="adminPageTitle">Dashboard</h2></header>
+    <div class="admin-content" id="adminContent"></div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="supabase-client.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>
