@@ -426,6 +426,35 @@ var Data = {
     return supabaseClient.from('reviews').select('*, products(name)').eq('status', 'approved').order('created_at', { ascending: false }).limit(limit || 6)
       .then(function (res) { return res.data || []; })
       .catch(function () { return []; });
+  },
+  // Banners already come back RLS-filtered to "enabled and within schedule" for a
+  // non-admin session (see supabase/migrations/0002_banners_and_product_flags.sql),
+  // so no date-window filtering needs to happen here.
+  getActiveBanners: function () {
+    return supabaseClient.from('banners').select('*').order('priority', { ascending: false })
+      .then(function (res) { return res.data || []; })
+      .catch(function () { return []; });
+  },
+  listOnSale: function (limit) {
+    return supabaseClient.from('products').select(PRODUCT_SELECT).eq('status', 'active').eq('on_sale', true).order('created_at', { ascending: false }).limit(limit || 8)
+      .then(function (res) { return { products: (res.data || []).map(mapSupabaseProduct), error: res.error }; })
+      .catch(function (err) { return { products: [], error: err }; });
+  },
+  // Real "best sellers" — ranked by units actually sold (paid orders only), never a
+  // guess. Hidden on the homepage entirely until there's real order history.
+  getBestSellers: function (limit) {
+    return supabaseClient.from('order_items').select('product_id, qty, orders!inner(payment_status)').eq('orders.payment_status', 'paid')
+      .then(function (res) {
+        if (res.error || !res.data || !res.data.length) return { products: [], error: res.error };
+        var totals = {};
+        res.data.forEach(function (row) { totals[row.product_id] = (totals[row.product_id] || 0) + row.qty; });
+        var rankedIds = Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; }).slice(0, limit || 8);
+        return Data.getProductsByIds(rankedIds).then(function (products) {
+          products.sort(function (a, b) { return rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id); });
+          return { products: products, error: null };
+        });
+      })
+      .catch(function (err) { return { products: [], error: err }; });
   }
 };
 
@@ -476,12 +505,59 @@ function renderSkeletonGrid(sel, count) {
 }
 
 /* ---------------------------------------------------------
+   Hero banner carousel — admin-managed via /admin/banners. Falls back to the
+   static default hero markup already in index.html when no banner is active.
+   --------------------------------------------------------- */
+var HeroBanner = {
+  banners: [], index: 0, timer: null, defaultHtml: null,
+  load: function () {
+    var hero = qs('#homeHero');
+    if (this.defaultHtml == null) this.defaultHtml = qs('#heroContent').innerHTML;
+    Data.getActiveBanners().then(function (banners) {
+      HeroBanner.banners = banners;
+      HeroBanner.index = 0;
+      clearInterval(HeroBanner.timer);
+      if (!banners.length) {
+        hero.classList.remove('has-banner-image');
+        hero.style.backgroundImage = '';
+        qs('#heroContent').innerHTML = HeroBanner.defaultHtml;
+        qs('#heroDots').innerHTML = '';
+        return;
+      }
+      HeroBanner.render();
+      if (banners.length > 1) {
+        HeroBanner.timer = setInterval(function () { HeroBanner.go((HeroBanner.index + 1) % HeroBanner.banners.length); }, 5500);
+      }
+    });
+  },
+  go: function (i) { this.index = i; this.render(); },
+  render: function () {
+    var b = this.banners[this.index];
+    var hero = qs('#homeHero');
+    hero.classList.add('has-banner-image');
+    hero.style.backgroundImage = 'linear-gradient(180deg, rgba(31,10,10,.15), rgba(31,10,10,.55)), url("' + b.image_url.replace(/"/g, '') + '")';
+    qs('#heroContent').innerHTML =
+      (b.offer_text ? '<span class="hero-offer-badge">' + escapeHtml(b.offer_text) + '</span><br>' : '') +
+      '<div class="eyebrow">' + escapeHtml(b.subtitle ? '' : 'The Zari Edit') + '</div>' +
+      '<h1>' + escapeHtml(b.title) + '</h1>' +
+      (b.subtitle ? '<p>' + escapeHtml(b.subtitle) + '</p>' : '') +
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;">' +
+      '<a href="' + escapeHtml(b.cta_link || '#/sarees') + '" class="btn btn-primary" ' + (String(b.cta_link || '').indexOf('#/') === 0 ? 'data-link' : 'target="_blank" rel="noopener"') + '>' + escapeHtml(b.cta_text || 'Shop Now') + '</a>' +
+      '</div>';
+    qs('#heroDots').innerHTML = this.banners.length > 1 ? this.banners.map(function (bn, i) {
+      return '<button class="' + (i === HeroBanner.index ? 'active' : '') + '" onclick="HeroBanner.go(' + i + ')" aria-label="Show banner ' + (i + 1) + '"></button>';
+    }).join('') : '';
+  }
+};
+
+/* ---------------------------------------------------------
    Home view
    --------------------------------------------------------- */
 function renderHome() {
   renderSkeletonGrid('#newArrivalsGrid', 4);
   renderSkeletonGrid('#featuredGrid', 4);
   renderSkeletonGrid('#moreStylesGrid', 4);
+  HeroBanner.load();
 
   Data.getCategories('saree_type').then(function (cats) {
     var wrap = qs('#quickCategories');
@@ -511,6 +587,15 @@ function renderHome() {
     renderGridInto('#featuredGrid', r.products, 'Featured picks are on the way.', !!r.error);
   });
   Data.listProducts({ limit: 8 }).then(function (r) { renderGridInto('#moreStylesGrid', r.products, 'Our collection is on its way.', !!r.error); });
+
+  Data.getBestSellers(8).then(function (r) {
+    document.getElementById('sectionBestSellers').style.display = (r.products.length || r.error) ? '' : 'none';
+    renderGridInto('#bestSellersGrid', r.products, '', !!r.error);
+  });
+  Data.listOnSale(8).then(function (r) {
+    document.getElementById('sectionOfferProducts').style.display = (r.products.length || r.error) ? '' : 'none';
+    renderGridInto('#offerProductsGrid', r.products, '', !!r.error);
+  });
 
   Data.getLiveCampaign().then(function (c) {
     var section = document.getElementById('sectionCampaign');
@@ -835,6 +920,7 @@ var Router = {
   rerender: function () { this.handle(); },
   notFound: function () { this.show('notfound'); },
   show: function (viewName) {
+    if (viewName !== 'home') clearInterval(HeroBanner.timer);
     qsa('.view').forEach(function (v) { v.classList.remove('active'); });
     qs('#view-' + viewName).classList.add('active');
     window.scrollTo({ top: 0, behavior: 'auto' });

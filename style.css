@@ -93,7 +93,18 @@ h1, h2, h3, .display { font-family: var(--font-display); font-weight: 600; color
 }
 
 /* ---------- Hero ---------- */
-.hero { position: relative; min-height: 78vh; display: flex; align-items: center; color: var(--maroon-900); background: linear-gradient(180deg, rgba(255,253,249,.2), rgba(255,253,249,.5)), var(--cream-200) center/cover; }
+.hero { position: relative; min-height: 78vh; display: flex; align-items: center; color: var(--maroon-900); background: linear-gradient(180deg, rgba(255,253,249,.2), rgba(255,253,249,.5)), var(--cream-200) center/cover; transition: background-image .5s ease; }
+.hero.has-banner-image { color: #fff; background: linear-gradient(180deg, rgba(31,10,10,.15), rgba(31,10,10,.55)), var(--maroon-900) center/cover; }
+.hero.has-banner-image .hero-content .eyebrow { color: var(--gold-300); }
+.hero.has-banner-image .hero-content h1 { color: #fff; }
+.hero.has-banner-image .hero-content p { color: var(--cream-200); }
+.hero.has-banner-image .btn-outline { border-color: #fff; color: #fff; }
+.hero-offer-badge { display: inline-block; background: var(--gold-400); color: var(--maroon-950); font-weight: 700; font-size: 12px; letter-spacing: .03em; padding: 5px 14px; border-radius: 999px; margin-bottom: 12px; }
+.hero-dots { position: absolute; left: 0; right: 0; bottom: 18px; display: flex; justify-content: center; gap: 8px; z-index: 2; }
+.hero-dots button { width: 8px; height: 8px; border-radius: 50%; border: none; background: rgba(61,20,20,.25); padding: 0; }
+.hero.has-banner-image .hero-dots button { background: rgba(255,255,255,.4); }
+.hero-dots button.active { background: var(--maroon-900); width: 22px; border-radius: 4px; }
+.hero.has-banner-image .hero-dots button.active { background: #fff; }
 .hero-content { max-width: 560px; padding: 40px 0; }
 .hero-content .eyebrow { color: var(--gold-500); }
 .hero-content h1 { font-size: clamp(38px, 6vw, 62px); color: var(--maroon-900); line-height: 1.05; margin: 10px 0 18px; }

@@ -12,11 +12,28 @@ Static HTML/CSS/JS SPA (`index.html`, `style.css`, `script.js`) + Supabase
 ## Before this goes live
 
 1. **Create a new Supabase project for Zari** (separate from You & Me's). Then:
-   - Run `supabase/migrations/0001_init.sql` (via `supabase db push` or the SQL editor).
+   - Run the migrations in order: `supabase/migrations/0001_init.sql`, then `0002_banners_and_product_flags.sql`
+     (via `supabase db push` or the SQL editor).
+   - Optionally run `supabase/seed/import_extracted_products.sql` — this loads 39 real
+     inventory rows from the supplier's own product list as **draft** products (price 0,
+     no images) so you have real SKUs to fill in rather than starting from zero. See
+     "Imported inventory" below.
    - Update `SUPABASE_URL` / `SUPABASE_ANON_KEY` in [`supabase-client.js`](supabase-client.js).
    - Create your admin user, then insert their `auth.users.id` into the `admins` table.
+   - **Create two Storage buckets, both set to Public**: `banners` and `products`.
+     These back the image-upload UI in Admin → Banners and Admin → Products; until
+     they exist, uploads fail with a clear toast telling you which bucket is missing.
 2. **Add real products** via SQL/admin (never fake data — see rule in the build brief).
    Nothing renders until `products.status = 'active'` rows exist.
+
+### Imported inventory
+`supabase/seed/import_extracted_products.sql` was generated from
+`ZARI_Product_Details_Extracted.docx` — 39 unique real SKUs (supplier product
+codes/descriptions/quantities). That document had no prices or photos, so every
+row lands as `status = 'draft'` with `price = 0` — invisible on the public site.
+To publish one: open it in Admin → Products, set a real price, upload photos,
+tidy up the name (several are raw supplier codes like "Kbu0200mulcotton"), then
+switch Status to Active.
 3. **Payment (Cashfree)** is intentionally stubbed — see `supabase/functions/cashfree-*`.
    Get Zari's own **sandbox** Cashfree App ID/Secret, set them as Edge Function secrets,
    and implement the TODOs in those three functions before enabling checkout.
@@ -30,9 +47,27 @@ Static HTML/CSS/JS SPA (`index.html`, `style.css`, `script.js`) + Supabase
    root. Do **not** deploy over `officialyouandme.in`.
 
 ## What's implemented (MVP)
-- Home page: hero, quick categories, new arrivals, shop by saree type/fabric/occasion,
-  featured collection, live-campaign banner (hidden when none live), more styles,
-  brand story, trust strip, verified reviews (hidden when none approved), newsletter.
+- Home page: admin-managed hero banner carousel (falls back to a static default hero
+  when no banner is active), quick categories, new arrivals, shop by saree type/fabric/
+  occasion, featured collection, best sellers (real order data only, hidden until there
+  is any), offer products (admin-flagged on-sale items), live-campaign banner (hidden
+  when none live), more styles, brand story, trust strip, verified reviews (hidden when
+  none approved), newsletter.
+- **Admin → Banner Management**: add/edit/delete homepage hero banners; enable/disable;
+  set title, subtitle, offer badge text, CTA text + link, image (upload or URL), an
+  occasion tag (Onam/Vishu/Wedding/Festive Sale/New Arrivals/Flash Sale/Diwali/Eid/
+  Christmas/New Year/general), a priority (ties break by most recent), and an optional
+  start/end date range for scheduling. Multiple enabled banners auto-rotate on the
+  homepage hero with dot navigation; RLS hides anything disabled or outside its
+  scheduled window from everyone except admins.
+- **Admin → Products**: full CRUD plus quick hide/unhide, featured toggle, and on-sale
+  toggle right from the list. The edit form covers every field from the brief — name,
+  price, sale price, description, fabric, SKU, care, saree/blouse measurements — plus
+  category tagging (checkboxes across saree type/fabric/occasion/style), a repeatable
+  colour list (swatch colour picker + name), a repeatable variant list (colour + size +
+  stock, the thing that actually drives Add to Cart), and multi-image upload to Supabase
+  Storage with drag-free "make main" / remove controls on each thumbnail (first image =
+  homepage/PDP thumbnail).
 - Header: desktop nav + search + delivery-location pill + wishlist/account/cart;
   compact mobile header with search/location rows underneath.
 - Catalog: filter sidebar (desktop) / bottom sheet (mobile) by saree type, fabric,
@@ -50,8 +85,8 @@ Static HTML/CSS/JS SPA (`index.html`, `style.css`, `script.js`) + Supabase
 - RLS on every customer-facing table; `is_admin()` gate for admin-only writes.
 
 ## Not yet built (next phases — see build brief phases G–J)
-- Admin console (products/orders/customers/inventory/shipping/categories/collections/
-  media library/campaigns/reviews/settings).
+- Admin: shipping provider settings UI, media library (browse-all-uploads view),
+  dedicated customers detail view.
 - Live payment + live shipping provider wiring (needs Zari's own credentials).
 - Realtime shipment tracking UI, secondary delivery number, invoices.
 - Complete the Look / accessories cross-sell (schema is ready — `complete_the_look` table —
