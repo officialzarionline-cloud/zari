@@ -17,6 +17,42 @@ function slugify(s) { return String(s).toLowerCase().trim().replace(/[^a-z0-9]+/
 function qs(sel, root) { return (root || document).querySelector(sel); }
 function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
 
+// Clean branded placeholder used whenever a product has no image yet (spec §10).
+var PLACEHOLDER_IMG = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400">' +
+  '<rect width="300" height="400" fill="#f5ead8"/>' +
+  '<text x="150" y="195" font-family="Cormorant Garamond,Georgia,serif" font-size="42" font-style="italic" fill="#7a2828" text-anchor="middle">Zari</text>' +
+  '<text x="150" y="225" font-family="Manrope,sans-serif" font-size="12" letter-spacing="2" fill="#b8874a" text-anchor="middle">IMAGE COMING SOON</text></svg>');
+function imgSrc(url) { return url && String(url).trim() ? url : PLACEHOLDER_IMG; }
+
+// Products are cached by id as they render so card action buttons (Add / Buy Now)
+// can act without re-fetching or embedding the whole object in an onclick attribute.
+var ProductCache = {};
+function cacheProduct(p) { if (p && p.id) ProductCache[p.id] = p; return p; }
+function stockLabel(p) {
+  if (p.stock <= 0) return { text: 'Out of Stock', cls: 'oos' };
+  if (p.stock <= 3) return { text: 'Only ' + p.stock + ' left', cls: 'low' };
+  return { text: 'In Stock', cls: 'in' };
+}
+// Shared: resolve the variant to add for a card/PDP given the currently-picked colour.
+function pickVariant(p, colorName) {
+  if (!p.variants || !p.variants.length) return null;
+  return (colorName && p.variants.find(function (v) { return v.color === colorName; })) || p.variants[0];
+}
+function cardAddToCart(id) {
+  var p = ProductCache[id]; if (!p) return;
+  if (p.stock <= 0) { openNotifyMe(p.id); return; }
+  if (p.colors && p.colors.length > 1) { openQuickView(p.slug); return; } // let them pick colour
+  Cart.add(p, pickVariant(p), 1);
+}
+function cardBuyNow(id) {
+  var p = ProductCache[id]; if (!p) return;
+  if (p.stock <= 0) { toast('This item is out of stock'); return; }
+  if (p.colors && p.colors.length > 1) { openQuickView(p.slug); return; }
+  Cart.add(p, pickVariant(p), 1, { silent: true });
+  Router.go('/checkout');
+}
+
 function toast(msg) {
   var el = qs('#toast');
   el.textContent = msg;
@@ -52,19 +88,23 @@ var Cart = {
   items: [],
   load: function () { try { this.items = JSON.parse(localStorage.getItem(this.KEY)) || []; } catch (e) { this.items = []; } },
   persist: function () { try { localStorage.setItem(this.KEY, JSON.stringify(this.items)); } catch (e) {} this.updateBadge(); },
-  add: function (product, variant, qty) {
+  // opts.silent = don't toast / don't open the drawer (used by Buy Now, which
+  // navigates straight to checkout instead).
+  add: function (product, variant, qty, opts) {
     qty = qty || 1;
+    opts = opts || {};
     var variantId = variant ? variant.id : null;
     var existing = this.items.find(function (i) { return i.productId === product.id && i.variantId === variantId; });
     if (existing) { existing.qty += qty; }
     else {
       this.items.push({
         productId: product.id, variantId: variantId, name: product.name, sku: product.sku,
-        image: product.images && product.images[0], price: product.price,
+        image: (product.images && product.images[0]) || '', price: product.price,
         color: variant ? variant.color : null, size: variant ? variant.size : null, qty: qty
       });
     }
     this.persist();
+    if (opts.silent) return;
     toast('Added to bag');
     Cart.open();
   },
@@ -74,10 +114,16 @@ var Cart = {
   },
   setQty: function (productId, variantId, qty) {
     var it = this.items.find(function (i) { return i.productId === productId && i.variantId === variantId; });
-    if (it) { it.qty = Math.max(1, qty); this.persist(); Cart.render(); }
+    if (it) { it.qty = Math.max(1, qty); this.persist(); Cart.render(); if (qs('#cartPageContainer') && qs('#view-cart').classList.contains('active')) renderCartPage(); }
   },
   subtotal: function () { return this.items.reduce(function (s, i) { return s + i.price * i.qty; }, 0); },
   count: function () { return this.items.reduce(function (s, i) { return s + i.qty; }, 0); },
+  // Delivery: free over the free-shipping threshold, else a flat fee. These are the
+  // store's stated rules (announcement bar: free over ₹2,999), not invented per-order.
+  FREE_SHIP_OVER: 2999,
+  FLAT_SHIP: 79,
+  deliveryFee: function () { return this.subtotal() >= this.FREE_SHIP_OVER || this.subtotal() === 0 ? 0 : this.FLAT_SHIP; },
+  total: function () { return this.subtotal() + this.deliveryFee(); },
   updateBadge: function () {
     var n = this.count();
     [qs('#cartCount'), qs('#mobileCartCount')].forEach(function (el) { if (!el) return; el.textContent = n; el.classList.toggle('hidden', n === 0); });
@@ -393,7 +439,10 @@ var Data = {
     if (filters.categorySlug) query = query.eq('product_categories.categories.slug', filters.categorySlug);
     if (filters.featured) query = query.eq('featured', true);
     if (filters.newArrival) query = query.eq('new_arrival', true);
+    if (filters.bestSeller) query = query.eq('best_seller', true);
+    if (filters.onSale) query = query.eq('on_sale', true);
     if (filters.fabric) query = query.eq('fabric', filters.fabric);
+    if (filters.productType) query = query.eq('product_type', filters.productType);
     if (filters.occasion) query = query.eq('occasion', filters.occasion);
     if (filters.minPrice) query = query.gte('price', filters.minPrice);
     if (filters.maxPrice) query = query.lte('price', filters.maxPrice);
@@ -403,6 +452,7 @@ var Data = {
     }
     if (filters.sort === 'price-asc') query = query.order('price', { ascending: true });
     else if (filters.sort === 'price-desc') query = query.order('price', { ascending: false });
+    else if (filters.sort === 'discount') query = query.order('sale_price', { ascending: true, nullsFirst: false });
     else query = query.order('created_at', { ascending: false });
     if (filters.limit) query = query.limit(filters.limit);
     return query.then(function (res) { return { products: (res.data || []).map(mapSupabaseProduct), count: res.count || 0, error: res.error }; })
@@ -442,17 +492,26 @@ var Data = {
   },
   // Real "best sellers" — ranked by units actually sold (paid orders only), never a
   // guess. Hidden on the homepage entirely until there's real order history.
+  // Best sellers: admin-flagged best_seller products first (lets the store hand-pick
+  // before there is any order history); if none are flagged, fall back to a real
+  // ranking by units sold in paid orders. Never invented — empty when neither exists.
   getBestSellers: function (limit) {
-    return supabaseClient.from('order_items').select('product_id, qty, orders!inner(payment_status)').eq('orders.payment_status', 'paid')
+    limit = limit || 8;
+    return supabaseClient.from('products').select(PRODUCT_SELECT).eq('status', 'active').eq('best_seller', true).order('created_at', { ascending: false }).limit(limit)
       .then(function (res) {
-        if (res.error || !res.data || !res.data.length) return { products: [], error: res.error };
-        var totals = {};
-        res.data.forEach(function (row) { totals[row.product_id] = (totals[row.product_id] || 0) + row.qty; });
-        var rankedIds = Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; }).slice(0, limit || 8);
-        return Data.getProductsByIds(rankedIds).then(function (products) {
-          products.sort(function (a, b) { return rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id); });
-          return { products: products, error: null };
-        });
+        var flagged = (res.data || []).map(mapSupabaseProduct);
+        if (flagged.length) return { products: flagged, error: res.error };
+        return supabaseClient.from('order_items').select('product_id, qty, orders!inner(payment_status)').eq('orders.payment_status', 'paid')
+          .then(function (r2) {
+            if (r2.error || !r2.data || !r2.data.length) return { products: [], error: r2.error };
+            var totals = {};
+            r2.data.forEach(function (row) { totals[row.product_id] = (totals[row.product_id] || 0) + row.qty; });
+            var rankedIds = Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; }).slice(0, limit);
+            return Data.getProductsByIds(rankedIds).then(function (products) {
+              products.sort(function (a, b) { return rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id); });
+              return { products: products, error: null };
+            });
+          });
       })
       .catch(function (err) { return { products: [], error: err }; });
   }
@@ -462,34 +521,50 @@ var Data = {
    Product card / grid rendering
    --------------------------------------------------------- */
 function productCardHtml(p) {
-  var img1 = p.images[0] || '';
-  var img2 = p.images[1] || img1;
+  cacheProduct(p);
+  var img1 = imgSrc(p.images[0]);
+  var img2 = p.images[1] ? p.images[1] : img1;
   var disc = discountPercent(p.price, p.oldPrice);
   var outOfStock = p.stock <= 0;
+  var stk = stockLabel(p);
+  var meta = [p.primaryCategory, p.productType].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; });
+  // Short info line: description first sentence, else fabric/blouse summary.
+  var shortInfo = p.description ? String(p.description).replace(/\s+/g, ' ').slice(0, 64) + (p.description.length > 64 ? '…' : '')
+    : [p.fabric, p.blouseIncluded ? 'Blouse included' : null].filter(Boolean).join(' · ');
   return '<div class="product-card reveal">' +
     '<a href="#/product/' + p.slug + '" data-link>' +
     '<div class="product-media">' +
     '<div class="product-badges">' +
     (p.newArrival ? '<span class="badge badge-new">New</span>' : '') +
     (disc > 0 ? '<span class="badge badge-sale">' + disc + '% Off</span>' : '') +
+    (p.bestSeller ? '<span class="badge badge-best">Best Seller</span>' : '') +
     (outOfStock ? '<span class="badge badge-oos">Out of Stock</span>' : '') +
     '</div>' +
-    '<img class="img-main" src="' + escapeHtml(img1) + '" alt="' + escapeHtml(p.name) + '" loading="lazy">' +
+    '<img class="img-main" src="' + escapeHtml(img1) + '" alt="' + escapeHtml(p.name) + '" loading="lazy" onerror="this.src=PLACEHOLDER_IMG">' +
     (img2 !== img1 ? '<img class="img-alt" src="' + escapeHtml(img2) + '" alt="" loading="lazy">' : '') +
     '</div></a>' +
-    '<button class="wishlist-toggle ' + (Wishlist.has(p.id) ? 'active' : '') + '" data-wishlist-id="' + p.id + '" onclick="Wishlist.toggle(\'' + p.id + '\')" style="top:10px;right:10px;position:absolute;">' +
+    '<button class="wishlist-toggle ' + (Wishlist.has(p.id) ? 'active' : '') + '" data-wishlist-id="' + p.id + '" onclick="Wishlist.toggle(\'' + p.id + '\')" title="Wishlist">' +
     '<svg viewBox="0 0 24 24" fill="' + (Wishlist.has(p.id) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.3 4 6.3 4c2 0 3.6 1.1 4.7 2.8C12.1 5.1 13.7 4 15.7 4c4 0 5.8 4 4.3 7.7-2.5 4.6-10 9.3-10 9.3z"/></svg></button>' +
     '<div class="quick-actions">' +
     '<button onclick="openQuickView(\'' + p.slug + '\')">Quick View</button>' +
-    (p.readyToWear && !outOfStock ? '<button class="primary" onclick="Cart.add(' + JSON.stringify(p).replace(/'/g, "&#39;") + ', ' + (p.variants[0] ? JSON.stringify(p.variants[0]).replace(/'/g, "&#39;") : 'null') + ')">Quick Add</button>' :
-      '<button class="primary" onclick="openQuickView(\'' + p.slug + '\')">' + (outOfStock ? 'Notify Me' : 'Select Options') + '</button>') +
+    '<a class="primary" href="#/product/' + p.slug + '" data-link>View Details</a>' +
     '</div>' +
     '<div class="product-info">' +
-    '<p class="name">' + escapeHtml(p.name) + '</p>' +
-    '<div class="price-row"><span class="price">' + formatPrice(p.price) + '</span>' +
+    (meta.length ? '<p class="card-meta">' + meta.map(escapeHtml).join(' · ') + '</p>' : '') +
+    '<a href="#/product/' + p.slug + '" data-link><p class="name">' + escapeHtml(p.name) + '</p></a>' +
+    '<p class="card-sku">Code: ' + escapeHtml(p.sku) + '</p>' +
+    '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' +
     (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span><span class="discount">' + disc + '% off</span>' : '') +
     '</div>' +
-    (p.colors.length > 1 ? '<div class="swatches">' + p.colors.map(function (c) { return '<span class="swatch" style="background:' + escapeHtml(c.hex || '#ccc') + '" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div>' : '') +
+    (shortInfo ? '<p class="card-short">' + escapeHtml(shortInfo) + '</p>' : '') +
+    '<p class="stock-status stock-' + stk.cls + '">' + stk.text + '</p>' +
+    (p.colors.length > 1 ? '<div class="swatches">' + p.colors.slice(0, 6).map(function (c) { return '<span class="swatch" style="background:' + escapeHtml(c.hex || '#ccc') + '" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div>' : '') +
+    '<div class="card-actions">' +
+    (outOfStock
+      ? '<button class="btn btn-ghost card-btn" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
+      : '<button class="btn btn-dark card-btn" onclick="cardAddToCart(\'' + p.id + '\')">Add to Cart</button>' +
+        '<button class="btn btn-primary card-btn" onclick="cardBuyNow(\'' + p.id + '\')">Buy Now</button>') +
+    '</div>' +
     '</div></div>';
 }
 
@@ -619,13 +694,17 @@ function renderHome() {
    --------------------------------------------------------- */
 var CatalogState = { filters: {}, sort: 'new' };
 function renderCatalog(routeParams, query) {
-  var title = 'Sarees';
+  var title = 'All Sarees';
   var filters = {};
   if (query.q) { title = 'Search: "' + query.q + '"'; filters.search = query.q; }
-  if (query.type) filters.categorySlug = query.type;
-  if (query.fabric) filters.fabric = query.fabric;
-  if (query.occasion) filters.occasion = query.occasion;
+  if (query.type) { filters.categorySlug = query.type; title = 'Sarees'; }
+  if (query.fabric) { filters.fabric = query.fabric; title = query.fabric.charAt(0).toUpperCase() + query.fabric.slice(1) + ' Sarees'; }
+  if (query.occasion) { filters.occasion = query.occasion; title = 'Shop by Occasion'; }
+  if (query.featured) { filters.featured = true; title = 'Featured Sarees'; }
+  if (query.sale) { filters.onSale = true; title = 'Special Offers'; }
+  if (query.best) { filters.bestSeller = true; title = 'Best Sellers'; }
   if (routeParams === 'new-arrivals') { title = 'New Arrivals'; filters.newArrival = true; }
+  if (routeParams === 'offers') { title = 'Special Offers'; filters.onSale = true; }
   filters.sort = CatalogState.sort;
   qs('#catalogTitle').textContent = title;
   renderSkeletonGrid('#catalogGrid', 8);
@@ -664,59 +743,91 @@ qs('#openSortSheet').addEventListener('click', function () {
 /* ---------------------------------------------------------
    Product detail view
    --------------------------------------------------------- */
-var PDPState = { product: null, activeImage: 0, activeColor: null };
+var PDPState = { product: null, activeImage: 0, activeColor: null, qty: 1 };
+function pdpSetQty(delta) {
+  PDPState.qty = Math.max(1, PDPState.qty + delta);
+  var el = qs('#pdpQtyVal'); if (el) el.textContent = PDPState.qty;
+}
 function renderProductDetail(slug) {
   qs('#pdpContainer').innerHTML = '<div class="skeleton skeleton-media" style="border-radius:var(--radius-md);"></div><div><div class="skeleton skeleton-line" style="width:60%;height:28px;"></div><div class="skeleton skeleton-line" style="width:30%;"></div></div>';
   Data.getProductBySlug(slug).then(function (p) {
     if (!p) { qs('#pdpContainer').innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Product not found.</div>'; return; }
-    PDPState.product = p; PDPState.activeImage = 0; PDPState.activeColor = p.colors[0] ? p.colors[0].name : null;
+    PDPState.product = p; PDPState.activeImage = 0; PDPState.activeColor = p.colors[0] ? p.colors[0].name : null; PDPState.qty = 1;
     RecentlyViewed.record(p.id);
     document.title = p.name + ' | Zari';
     var disc = discountPercent(p.price, p.oldPrice);
     var outOfStock = p.stock <= 0;
+    var stk = stockLabel(p);
+    var images = p.images.length ? p.images : [PLACEHOLDER_IMG];
 
     var details = [
-      ['Fabric', p.fabric], ['Saree Length', p.sareeLengthM ? p.sareeLengthM + ' m' : null],
+      ['Category', p.primaryCategory], ['Product Type', p.productType],
+      ['Fabric / Material', p.fabric], ['Colour', p.colors.map(function (c) { return c.name; }).join(', ') || null],
+      ['Saree Length', p.sareeLengthM ? p.sareeLengthM + ' m' : null],
       ['Blouse Piece', p.blouseIncluded ? 'Included' : null], ['Blouse Length', p.blouseLengthM ? p.blouseLengthM + ' m' : null],
       ['Work / Weave', [p.workType, p.weave].filter(Boolean).join(', ') || null], ['Border', p.borderType],
-      ['Occasion', p.occasion], ['Care Instructions', p.washCare], ['Country of Origin', p.countryOfOrigin], ['SKU', p.sku]
+      ['Occasion', p.occasion], ['Care Instructions', p.washCare], ['Country of Origin', p.countryOfOrigin],
+      ['Product Code', p.sku], ['HSN Code', p.hsnCode]
     ].filter(function (d) { return d[1]; });
 
     qs('#pdpContainer').innerHTML =
       '<div>' +
-      '<div class="pdp-gallery-main"><img id="pdpMainImg" src="' + escapeHtml(p.images[0] || '') + '"></div>' +
-      '<div class="pdp-thumbs">' + p.images.map(function (img, i) { return '<img src="' + escapeHtml(img) + '" class="' + (i === 0 ? 'active' : '') + '" onclick="setPdpImage(' + i + ')">'; }).join('') + '</div>' +
+      '<div class="pdp-gallery-main"><img id="pdpMainImg" src="' + escapeHtml(images[0]) + '" onerror="this.src=PLACEHOLDER_IMG"></div>' +
+      '<div class="pdp-thumbs">' + images.map(function (img, i) { return '<img src="' + escapeHtml(img) + '" class="' + (i === 0 ? 'active' : '') + '" onclick="setPdpImage(' + i + ')" onerror="this.src=PLACEHOLDER_IMG">'; }).join('') + '</div>' +
       '</div>' +
       '<div class="pdp-info">' +
-      (p.newArrival ? '<span class="badge badge-new">New</span>' : '') +
+      (p.primaryCategory || p.productType ? '<p class="card-meta">' + [p.primaryCategory, p.productType].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).map(escapeHtml).join(' · ') + '</p>' : '') +
+      '<div style="display:flex;gap:8px;">' + (p.newArrival ? '<span class="badge badge-new">New</span>' : '') + (p.bestSeller ? '<span class="badge badge-best">Best Seller</span>' : '') + '</div>' +
       '<h1 class="name">' + escapeHtml(p.name) + '</h1>' +
-      '<div class="price-row"><span class="price">' + formatPrice(p.price) + '</span> ' +
+      '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span> ' +
       (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span> <span class="discount">' + disc + '% off</span>' : '') + '</div>' +
-      '<p class="sku">SKU: ' + escapeHtml(p.sku) + '</p>' +
+      '<p class="sku">Product Code: ' + escapeHtml(p.sku) + '</p>' +
+      '<p class="stock-status stock-' + stk.cls + '" style="margin:0 0 6px;">' + stk.text + '</p>' +
       (p.colors.length ? '<div class="field"><label>Colour: ' + escapeHtml(PDPState.activeColor || '') + '</label><div class="swatches">' +
         p.colors.map(function (c) { return '<span class="swatch ' + (c.name === PDPState.activeColor ? 'active' : '') + '" style="width:26px;height:26px;background:' + escapeHtml(c.hex || '#ccc') + '" onclick="setPdpColor(\'' + escapeHtml(c.name) + '\')" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div></div>' : '') +
+      (outOfStock ? '' :
+        '<div class="field"><label>Quantity</label><div class="qty-stepper" style="height:40px;">' +
+        '<button type="button" onclick="pdpSetQty(-1)" style="width:38px;">&minus;</button><span id="pdpQtyVal" style="width:40px;">1</span><button type="button" onclick="pdpSetQty(1)" style="width:38px;">+</button></div></div>') +
       '<div id="pdpDeliveryBlock" style="margin:18px 0;padding:14px;background:var(--cream-100);border-radius:var(--radius-sm);font-size:13px;">' +
       '<button class="link-btn" onclick="Location.open()">Check delivery to your PIN</button></div>' +
       '<div style="display:flex;gap:12px;margin-bottom:24px;">' +
       (outOfStock
-        ? '<button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
+        ? '<button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me When Available</button>'
         : '<button class="btn btn-dark" style="flex:1;justify-content:center;" onclick="addPdpToCart()">Add to Cart</button><button class="btn btn-primary" style="flex:1;justify-content:center;" onclick="addPdpToCart(true)">Buy Now</button>') +
+      '<button class="btn btn-ghost wishlist-toggle" data-wishlist-id="' + p.id + '" onclick="Wishlist.toggle(\'' + p.id + '\')" style="position:static;width:44px;flex:0 0 auto;' + (Wishlist.has(p.id) ? 'color:var(--maroon-700);' : '') + '"><svg viewBox="0 0 24 24" width="18" height="18" fill="' + (Wishlist.has(p.id) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.3 4 6.3 4c2 0 3.6 1.1 4.7 2.8C12.1 5.1 13.7 4 15.7 4c4 0 5.8 4 4.3 7.7-2.5 4.6-10 9.3-10 9.3z"/></svg></button>' +
       '</div>' +
-      '<div id="pdpAccordion">' + details.map(function (d, i) { return accordionItemHtml(d[0], escapeHtml(String(d[1])), i === 0); }).join('') + '</div>' +
+      (p.description ? '<div style="margin-bottom:8px;font-size:14px;line-height:1.7;color:var(--ink);">' + escapeHtml(p.description) + '</div>' : '') +
+      '<div id="pdpAccordion">' +
+        accordionItemHtml('Product Details', '<table class="pdp-detail-table">' + details.map(function (d) { return '<tr><td>' + escapeHtml(d[0]) + '</td><td>' + escapeHtml(String(d[1])) + '</td></tr>'; }).join('') + '</table>', true) +
+        accordionItemHtml('Delivery Information', 'Delivery availability is checked by PIN code at checkout. Serviceable orders are typically dispatched within 2–4 business days. Enter your PIN above to confirm delivery to your area.', false) +
+        accordionItemHtml('Return &amp; Exchange', 'Returns and exchanges are handled on a case-by-case basis for damaged or wrong items. Please contact support within 48 hours of delivery with your order number and photos. (Final return policy to be confirmed by Zari.)', false) +
+      '</div>' +
       '</div>';
 
     var stickyCta = qs('#pdpStickyCta');
     stickyCta.classList.add('show');
-    stickyCta.innerHTML = '<div style="flex:1;"><div class="price">' + formatPrice(p.price) + '</div></div>' +
-      (outOfStock ? '<button class="btn btn-ghost" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>' : '<button class="btn btn-dark" style="flex:1;" onclick="addPdpToCart()">Add to Cart</button>');
+    stickyCta.innerHTML = '<div style="flex:1;"><div class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</div></div>' +
+      (outOfStock ? '<button class="btn btn-ghost" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>' : '<button class="btn btn-dark" style="flex:1;" onclick="addPdpToCart()">Add to Cart</button><button class="btn btn-primary" style="flex:1;" onclick="addPdpToCart(true)">Buy Now</button>');
 
-    // Similar styles
-    var simFilters = { limit: 8 };
+    // Related products — prefer same category/fabric, exclude current, in-stock first.
+    var simFilters = { limit: 12 };
     if (p.fabric) simFilters.fabric = p.fabric;
     Data.listProducts(simFilters).then(function (r) {
-      var sims = r.products.filter(function (x) { return x.id !== p.id; }).slice(0, 4);
-      document.getElementById('sectionMoreStyles') && renderGridInto('#pdpSimilar', sims);
+      var sims = r.products.filter(function (x) { return x.id !== p.id; });
+      if (sims.length < 4) {
+        // top up with any active products
+        Data.listProducts({ limit: 12 }).then(function (r2) {
+          var extra = r2.products.filter(function (x) { return x.id !== p.id && !sims.find(function (s) { return s.id === x.id; }); });
+          finishRelated(sims.concat(extra).slice(0, 4));
+        });
+      } else { finishRelated(sims.slice(0, 4)); }
     });
+    function finishRelated(list) {
+      var sec = document.getElementById('sectionRelated');
+      if (!list.length) { sec.style.display = 'none'; return; }
+      sec.style.display = '';
+      renderGridInto('#pdpSimilar', list);
+    }
     observeReveal(document);
   });
 }
@@ -727,8 +838,8 @@ function setPdpImage(i) { PDPState.activeImage = i; qs('#pdpMainImg').src = PDPS
 function setPdpColor(name) { PDPState.activeColor = name; renderProductDetail(PDPState.product.slug); }
 function addPdpToCart(buyNow) {
   var p = PDPState.product;
-  var variant = p.variants.find(function (v) { return v.color === PDPState.activeColor; }) || p.variants[0] || null;
-  Cart.add(p, variant, 1);
+  var variant = pickVariant(p, PDPState.activeColor);
+  Cart.add(p, variant, PDPState.qty, buyNow ? { silent: true } : {});
   if (buyNow) Router.go('/checkout');
 }
 function openNotifyMe(productId) {
@@ -764,6 +875,43 @@ function openQuickView(slug) {
 }
 
 /* ---------------------------------------------------------
+   Dedicated cart page (full-page view, distinct from the slide-out drawer).
+   --------------------------------------------------------- */
+function renderCartPage() {
+  var el = qs('#cartPageContainer');
+  if (!Cart.items.length) {
+    el.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><p>Your bag is empty.</p><a href="#/sarees" class="btn btn-dark" data-link style="margin-top:14px;">Continue Shopping</a></div>';
+    return;
+  }
+  var lines = Cart.items.map(function (i) {
+    var vid = i.variantId ? "'" + i.variantId + "'" : 'null';
+    return '<div class="cart-page-line">' +
+      '<img src="' + escapeHtml(imgSrc(i.image)) + '" onerror="this.src=PLACEHOLDER_IMG">' +
+      '<div style="flex:1;">' +
+      '<p class="name" style="font-weight:600;margin:0 0 4px;">' + escapeHtml(i.name) + '</p>' +
+      '<p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px;">' + [i.color, i.size, 'Code: ' + i.sku].filter(Boolean).map(escapeHtml).join(' · ') + '</p>' +
+      '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">' +
+      '<div class="qty-stepper"><button onclick="Cart.setQty(\'' + i.productId + '\',' + vid + ',' + (i.qty - 1) + ')">&minus;</button><span>' + i.qty + '</span><button onclick="Cart.setQty(\'' + i.productId + '\',' + vid + ',' + (i.qty + 1) + ')">+</button></div>' +
+      '<button class="link-btn" onclick="Cart.remove(\'' + i.productId + '\',' + vid + ');renderCartPage();">Remove</button>' +
+      '</div></div>' +
+      '<div style="text-align:right;font-weight:700;white-space:nowrap;">' + formatPrice(i.price * i.qty) + '</div>' +
+      '</div>';
+  }).join('');
+  var fee = Cart.deliveryFee();
+  el.innerHTML =
+    '<div class="cart-page-layout">' +
+    '<div>' + lines + '<a href="#/sarees" class="btn btn-ghost" data-link style="margin-top:18px;">&larr; Continue Shopping</a></div>' +
+    '<aside class="cart-summary">' +
+    '<h3 style="margin:0 0 16px;font-size:16px;">Order Summary</h3>' +
+    '<div class="sum-row"><span>Subtotal (' + Cart.count() + ' item' + (Cart.count() === 1 ? '' : 's') + ')</span><span>' + formatPrice(Cart.subtotal()) + '</span></div>' +
+    '<div class="sum-row"><span>Delivery</span><span>' + (fee === 0 ? 'FREE' : formatPrice(fee)) + '</span></div>' +
+    (fee > 0 ? '<p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 0;">Free delivery on orders over ' + formatPrice(Cart.FREE_SHIP_OVER) + '.</p>' : '') +
+    '<div class="sum-row sum-total"><span>Total</span><span>' + formatPrice(Cart.total()) + '</span></div>' +
+    '<a href="#/checkout" class="btn btn-dark" data-link style="width:100%;justify-content:center;margin-top:16px;">Proceed to Checkout</a>' +
+    '</aside></div>';
+}
+
+/* ---------------------------------------------------------
    Checkout (payment intentionally stubbed — see supabase/functions/cashfree-*)
    --------------------------------------------------------- */
 function renderCheckout() {
@@ -784,11 +932,22 @@ function renderCheckout() {
     '<div class="field-row"><div class="field"><label>City</label><input required id="ckCity"></div><div class="field"><label>State</label><input required id="ckState"></div></div>' +
     '<div class="field-row"><div class="field"><label>District</label><input id="ckDistrict"></div><div class="field"><label>PIN Code</label><input required maxlength="6" id="ckPincode"></div></div>' +
     '<div id="checkoutServiceabilityMsg" style="font-size:13px;margin-bottom:14px;"></div>' +
+    '<h3 style="font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--maroon-900);margin-top:24px;">Order Summary</h3>' +
     '<div style="background:var(--cream-100);border-radius:var(--radius-sm);padding:16px;margin-bottom:20px;">' +
+    Cart.items.map(function (i) {
+      return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:8px;">' +
+        '<span>' + escapeHtml(i.name) + (i.color ? ' (' + escapeHtml(i.color) + ')' : '') + ' &times; ' + i.qty + '</span>' +
+        '<span style="white-space:nowrap;">' + formatPrice(i.price * i.qty) + '</span></div>';
+    }).join('') +
+    '<hr style="border:none;border-top:1px solid var(--line);margin:10px 0;">' +
     '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>Subtotal</span><span>' + formatPrice(Cart.subtotal()) + '</span></div>' +
-    '<div style="display:flex;justify-content:space-between;font-weight:700;"><span>Total</span><span>' + formatPrice(Cart.subtotal()) + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>Delivery Charge</span><span>' + (Cart.deliveryFee() === 0 ? 'FREE' : formatPrice(Cart.deliveryFee())) + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>Discount</span><span>&minus; ' + formatPrice(0) + '</span></div>' +
+    '<div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;"><span>Total</span><span>' + formatPrice(Cart.total()) + '</span></div>' +
     '</div>' +
-    '<button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;">Proceed to Payment</button>' +
+    '<h3 style="font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--maroon-900);">Payment</h3>' +
+    '<div style="border:1px dashed var(--line);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;font-size:13px;color:var(--ink-soft);">Online payment (Cashfree) will appear here once configured. Structure is ready for gateway integration.</div>' +
+    '<button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;">Place Order</button>' +
     '<p style="font-size:11.5px;color:var(--ink-soft);text-align:center;margin-top:10px;">Payment via Cashfree is not yet configured for this store — see supabase/functions/cashfree-*.</p>' +
     '</form>';
 
@@ -938,11 +1097,11 @@ var Router = {
     closeAllOverlays();
 
     if (path === '/') { this.show('home'); renderHome(); }
-    else if (parts[0] === 'sarees' || parts[0] === 'new-arrivals' || parts[0] === 'collections' || parts[0] === 'occasions' || parts[0] === 'search') { this.show('catalog'); renderCatalog(parts[0], query); }
+    else if (parts[0] === 'sarees' || parts[0] === 'new-arrivals' || parts[0] === 'collections' || parts[0] === 'occasions' || parts[0] === 'offers' || parts[0] === 'search') { this.show('catalog'); renderCatalog(parts[0], query); }
     else if (parts[0] === 'product' && parts[1]) { this.show('product'); renderProductDetail(parts[1]); }
     else if (parts[0] === 'wishlist') { this.show('wishlist'); Data.getProductsByIds(Wishlist.ids).then(function (products) { renderGridInto('#wishlistGrid', products, 'Your wishlist is empty.'); }); }
     else if (parts[0] === 'checkout') { this.show('checkout'); renderCheckout(); }
-    else if (parts[0] === 'cart') { this.show('checkout'); qs('#checkoutContainer').innerHTML = ''; Cart.open(); }
+    else if (parts[0] === 'cart') { this.show('cart'); renderCartPage(); }
     else if (parts[0] === 'account') { this.show('account'); renderAccount(parts[1]); }
     else if (STATIC_PAGES[parts[0]]) { this.show('static'); renderStatic(parts[0]); }
     else { this.notFound(); }

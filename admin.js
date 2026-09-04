@@ -284,7 +284,7 @@ function renderBannerForm(id) {
 function renderProducts(parts) {
   if (parts[0] === 'new' || parts[0] === 'edit') { renderProductForm(parts[1]); return; }
   var el = qs('#adminContent');
-  el.innerHTML = '<div class="admin-toolbar"><input type="text" id="productSearch" placeholder="Search by name or SKU" style="border:1px solid var(--line);border-radius:6px;padding:9px 14px;min-width:260px;"><a href="#/admin/products/new" class="btn btn-dark">+ Add Product</a></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th></th><th>Name</th><th>SKU</th><th>Price</th><th>Stock</th><th>Status</th><th>Featured</th><th>Sale</th><th></th></tr></thead><tbody id="productsTbody"><tr><td colspan="9">Loading…</td></tr></tbody></table></div>';
+  el.innerHTML = '<div class="admin-toolbar"><input type="text" id="productSearch" placeholder="Search by name or SKU" style="border:1px solid var(--line);border-radius:6px;padding:9px 14px;min-width:260px;"><a href="#/admin/products/new" class="btn btn-dark">+ Add Product</a></div><div class="admin-table-wrap"><table class="admin-table"><thead><tr><th></th><th>Name</th><th>SKU</th><th>Price</th><th>Stock</th><th>Status</th><th>Featured</th><th>Best Seller</th><th>Sale</th><th></th></tr></thead><tbody id="productsTbody"><tr><td colspan="10">Loading…</td></tr></tbody></table></div>';
 
   function load(term) {
     var q = supabaseClient.from('products').select('*, product_images(image_url,sort_order), product_variants(stock)').order('created_at', { ascending: false });
@@ -298,11 +298,12 @@ function renderProducts(parts) {
           '<td>' + escapeHtml(p.name) + '</td><td>' + escapeHtml(p.sku) + '</td><td>' + formatPrice(p.sale_price || p.price) + '</td>' +
           '<td>' + stock + '</td><td>' + statusPill(p.status) + '</td>' +
           '<td><input type="checkbox" ' + (p.featured ? 'checked' : '') + ' onchange="toggleProductFlag(\'' + p.id + '\',\'featured\',this.checked)"></td>' +
+          '<td><input type="checkbox" ' + (p.best_seller ? 'checked' : '') + ' onchange="toggleProductFlag(\'' + p.id + '\',\'best_seller\',this.checked)"></td>' +
           '<td><input type="checkbox" ' + (p.on_sale ? 'checked' : '') + ' onchange="toggleProductFlag(\'' + p.id + '\',\'on_sale\',this.checked)"></td>' +
           '<td style="white-space:nowrap;"><a href="#/admin/products/edit/' + p.id + '" class="link-btn">Edit</a> ' +
           '<button class="link-btn" onclick="toggleProductStatus(\'' + p.id + '\',\'' + (p.status === 'active' ? 'draft' : 'active') + '\')">' + (p.status === 'active' ? 'Hide' : 'Unhide') + '</button></td></tr>';
-      }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--ink-soft);">No products yet — add your first one.</td></tr>';
-    }).catch(function () { qs('#productsTbody').innerHTML = '<tr><td colspan="9">Couldn’t load products.</td></tr>'; });
+      }).join('') : '<tr><td colspan="10" style="text-align:center;color:var(--ink-soft);">No products yet — add your first one.</td></tr>';
+    }).catch(function () { qs('#productsTbody').innerHTML = '<tr><td colspan="10">Couldn’t load products.</td></tr>'; });
   }
   load();
   window.__reloadProducts = load;
@@ -375,6 +376,9 @@ function renderProductForm(id) {
       field('Name', 'pName', p.name) + field('SKU / Product Code', 'pSku', p.sku) +
       field('Slug (auto if blank)', 'pSlug', p.slug) + field('Price (₹)', 'pPrice', p.price, 'number') +
       field('Sale / Offer Price (₹, optional)', 'pSalePrice', p.sale_price, 'number') + field('Stock (total, informational — variant stock below is authoritative)', 'pStockInfo', (p.product_variants || []).reduce(function (s, v) { return s + v.stock; }, 0), 'number') +
+      '<div class="field"><label>Product Type</label><select id="pProductType">' +
+        ['', 'Saree', 'Set Saree', 'Set Mundu', 'Churidar', 'Cotton Saree', 'Silk Saree', 'Kerala Saree', 'Printed Saree'].map(function (t) { return '<option' + (t === (p.product_type || '') ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></div>' +
+      field('HSN Code (optional)', 'pHsn', p.hsn_code) +
       field('Fabric / Material', 'pFabric', p.fabric) + field('Occasion (free text tag)', 'pOccasion', p.occasion) +
       field('Weave', 'pWeave', p.weave) + field('Work Type', 'pWorkType', p.work_type) +
       field('Border Type', 'pBorder', p.border_type) + field('Pattern', 'pPattern', p.pattern) +
@@ -384,6 +388,7 @@ function renderProductForm(id) {
       '<div class="admin-checkbox full"><input type="checkbox" id="pReadyToWear" ' + (p.ready_to_wear ? 'checked' : '') + '> Ready to wear (no size selection needed)</div>' +
       '<div class="admin-checkbox"><input type="checkbox" id="pFeatured" ' + (p.featured ? 'checked' : '') + '> Featured</div>' +
       '<div class="admin-checkbox"><input type="checkbox" id="pNewArrival" ' + (p.new_arrival ? 'checked' : '') + '> New Arrival</div>' +
+      '<div class="admin-checkbox"><input type="checkbox" id="pBestSeller" ' + (p.best_seller ? 'checked' : '') + '> Best Seller</div>' +
       '<div class="admin-checkbox"><input type="checkbox" id="pOnSale" ' + (p.on_sale ? 'checked' : '') + '> On Sale (shows in homepage Offer Products)</div>' +
       '<div class="field"><label>Status</label><select id="pStatus"><option value="draft"' + (p.status === 'draft' || !p.status ? ' selected' : '') + '>Draft (hidden)</option><option value="active"' + (p.status === 'active' ? ' selected' : '') + '>Active (visible on site)</option><option value="archived"' + (p.status === 'archived' ? ' selected' : '') + '>Archived</option></select></div>' +
       '<div class="field full"><label>Description</label><textarea id="pDescription" rows="4">' + escapeHtml(p.description || '') + '</textarea></div>' +
@@ -417,6 +422,8 @@ function renderProductForm(id) {
         blouse_colour: qs('#pBlouseColour').value || null, country_of_origin: qs('#pOrigin').value || null,
         blouse_included: qs('#pBlouseIncluded').checked, ready_to_wear: qs('#pReadyToWear').checked,
         featured: qs('#pFeatured').checked, new_arrival: qs('#pNewArrival').checked, on_sale: qs('#pOnSale').checked,
+        best_seller: qs('#pBestSeller').checked,
+        product_type: qs('#pProductType').value || null, hsn_code: qs('#pHsn').value || null,
         status: qs('#pStatus').value, description: qs('#pDescription').value || null,
         wash_care: qs('#pWashCare').value || null
       };

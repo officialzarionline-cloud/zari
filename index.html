@@ -107,6 +107,7 @@
         <h2 class="section-heading">New Arrivals</h2>
         <p class="section-sub">Fresh drapes, straight off the loom</p>
         <div class="product-grid" id="newArrivalsGrid"></div>
+        <p class="text-center" style="margin-top:24px;"><a href="#/new-arrivals" class="btn btn-ghost" data-link>View All New Arrivals</a></p>
       </div>
     </section>
 
@@ -138,8 +139,9 @@
     <section class="section" id="sectionFeaturedCollection">
       <div class="container">
         <p class="eyebrow text-center">Handpicked</p>
-        <h2 class="section-heading">Featured Collection</h2>
+        <h2 class="section-heading">Featured Sarees</h2>
         <div class="product-grid" id="featuredGrid"></div>
+        <p class="text-center" style="margin-top:24px;"><a href="#/sarees?featured=1" class="btn btn-ghost" data-link>View All Featured</a></p>
       </div>
     </section>
 
@@ -148,14 +150,16 @@
         <p class="eyebrow text-center">Loved By Customers</p>
         <h2 class="section-heading">Best Sellers</h2>
         <div class="product-grid" id="bestSellersGrid"></div>
+        <p class="text-center" style="margin-top:24px;"><a href="#/sarees?best=1" class="btn btn-ghost" data-link>View All Best Sellers</a></p>
       </div>
     </section>
 
     <section class="section" id="sectionOfferProducts" style="display:none;">
       <div class="container">
         <p class="eyebrow text-center">Limited Time</p>
-        <h2 class="section-heading">Offer Products</h2>
+        <h2 class="section-heading">Special Offers</h2>
         <div class="product-grid" id="offerProductsGrid"></div>
+        <p class="text-center" style="margin-top:24px;"><a href="#/offers" class="btn btn-ghost" data-link>View All Offers</a></p>
       </div>
     </section>
 
@@ -165,8 +169,10 @@
 
     <section class="section section-alt" id="sectionMoreStyles">
       <div class="container">
-        <h2 class="section-heading">More Styles</h2>
+        <p class="eyebrow text-center">Just For You</p>
+        <h2 class="section-heading">Recommended For You</h2>
         <div class="product-grid" id="moreStylesGrid"></div>
+        <p class="text-center" style="margin-top:24px;"><a href="#/sarees" class="btn btn-ghost" data-link>View All Products</a></p>
       </div>
     </section>
 
@@ -255,6 +261,12 @@
     <div class="container">
       <div class="pdp" id="pdpContainer"></div>
     </div>
+    <section class="section section-alt" id="sectionRelated" style="display:none;">
+      <div class="container">
+        <h2 class="section-heading">You May Also Like</h2>
+        <div class="product-grid" id="pdpSimilar"></div>
+      </div>
+    </section>
   </section>
 
   <!-- ============ VIEW: WISHLIST ============ -->
@@ -262,6 +274,14 @@
     <div class="container" style="padding:40px 0;">
       <h2 class="display">My Wishlist</h2>
       <div class="product-grid" id="wishlistGrid" style="margin-top:24px;"></div>
+    </div>
+  </section>
+
+  <!-- ============ VIEW: CART ============ -->
+  <section class="view" id="view-cart" data-view="cart">
+    <div class="container" style="padding:40px 0;">
+      <h2 class="display">Shopping Bag</h2>
+      <div id="cartPageContainer" style="margin-top:24px;"></div>
     </div>
   </section>
 

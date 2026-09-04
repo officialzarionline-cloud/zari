@@ -47,8 +47,11 @@ function mapSupabaseProduct(row) {
     washCare: row.wash_care,
     readyToWear: !!row.ready_to_wear,
     countryOfOrigin: row.country_of_origin,
+    productType: row.product_type,
+    hsnCode: row.hsn_code,
     price: row.sale_price || row.price,
     oldPrice: row.sale_price ? row.price : null,
+    hasRealPrice: Number(row.price) > 0,
     images: images.map(function (i) { return i.image_url; }),
     imageObjects: images,
     colors: colors,
@@ -56,8 +59,12 @@ function mapSupabaseProduct(row) {
     stock: totalStock,
     featured: !!row.featured,
     newArrival: !!row.new_arrival,
+    bestSeller: !!row.best_seller,
+    onSale: !!row.on_sale,
     status: row.status,
     categories: categories.map(function (c) { return { kind: c.kind, name: c.name, slug: c.slug }; }),
+    // First saree_type category, if any — used as the card's "category" line.
+    primaryCategory: (categories.filter(function (c) { return c.kind === 'saree_type'; })[0] || categories[0] || {}).name || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

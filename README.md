@@ -12,8 +12,8 @@ Static HTML/CSS/JS SPA (`index.html`, `style.css`, `script.js`) + Supabase
 ## Before this goes live
 
 1. **Create a new Supabase project for Zari** (separate from You & Me's). Then:
-   - Run the migrations in order: `supabase/migrations/0001_init.sql`, then `0002_banners_and_product_flags.sql`
-     (via `supabase db push` or the SQL editor).
+   - Run the migrations in order: `0001_init.sql`, `0002_banners_and_product_flags.sql`,
+     `0003_product_type_hsn_bestseller.sql` (via `supabase db push` or the SQL editor).
    - Optionally run `supabase/seed/import_extracted_products.sql` — this loads 39 real
      inventory rows from the supplier's own product list as **draft** products (price 0,
      no images) so you have real SKUs to fill in rather than starting from zero. See
@@ -72,16 +72,30 @@ switch Status to Active.
   compact mobile header with search/location rows underneath.
 - Catalog: filter sidebar (desktop) / bottom sheet (mobile) by saree type, fabric,
   occasion; sort by new/price/discount. Search queries name/sku/fabric/occasion/weave/description.
-- Product detail: gallery, colour swatches, accordion for saree-specific attributes
-  (only fields with real values are shown — no invented measurements), sticky mobile CTA,
-  Notify Me for out-of-stock.
+- Product cards: image (branded placeholder when none), category · type, name, product
+  code/SKU, price + original price + discount %, short info, real stock status
+  (In Stock / Only N left / Out of Stock), Best Seller/New/Sale badges, wishlist,
+  Quick View, View Details, Add to Cart, and Buy Now. Responsive grid (4/3/2 cols).
+- Product detail: image gallery, category/type, colour swatches, quantity selector,
+  Add to Cart / Buy Now / Wishlist, PIN delivery check, description, a Product Details
+  attribute table, Delivery Information and Return & Exchange accordions, and a
+  "You May Also Like" related-products rail. Sticky mobile CTA; Notify Me when sold out.
+- Buy Now (card + PDP) adds the item silently and jumps straight to checkout —
+  distinct from Add to Cart, which opens the cart drawer.
 - Quick View modal, wishlist (guest via localStorage, merges into Supabase on login),
-  cart drawer with Save for Later, recently-viewed tracking.
+  slide-out cart drawer AND a full-page cart (`#/cart`) with qty steppers, remove,
+  Continue Shopping, and an order summary (subtotal · delivery · total). Cart count
+  shows in the header. Recently-viewed tracking.
 - Auth: email/password + Google OAuth + forgot password, all via Supabase Auth.
 - Account: overview / orders (view-level hide only, no destructive delete) / addresses /
   wishlist / profile.
-- Checkout: contact + address form with live PIN serviceability check; payment step
-  clearly stubbed pending Cashfree credentials.
+- Checkout: contact + address form with live PIN serviceability check, an itemized
+  order summary (each line, subtotal, delivery charge, discount, final total), and a
+  payment section structured for gateway integration — clearly stubbed pending
+  Cashfree credentials.
+- Homepage rails each have a "View All" link: New Arrivals, Featured Sarees, Best
+  Sellers, Special Offers, Recommended, plus Shop by Category/Fabric/Occasion.
+  Catalog supports `?featured=1`, `?best=1`, `?sale=1`, `/offers`, sort by discount.
 - RLS on every customer-facing table; `is_admin()` gate for admin-only writes.
 
 ## Not yet built (next phases — see build brief phases G–J)
