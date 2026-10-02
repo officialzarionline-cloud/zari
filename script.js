@@ -66,7 +66,7 @@ function openOverlay(scrimAlso) {
 }
 function closeAllOverlays() {
   qs('#overlayScrim').classList.remove('open');
-  qsa('.drawer.open, .modal-overlay.open, .bottom-sheet.open').forEach(function (el) { el.classList.remove('open'); });
+  qsa('.drawer.open, .modal-overlay.open, .bottom-sheet.open, .search-sheet.open').forEach(function (el) { el.classList.remove('open'); });
   document.body.style.overflow = '';
 }
 qs('#overlayScrim').addEventListener('click', closeAllOverlays);
@@ -133,32 +133,34 @@ var Cart = {
   render: function () {
     var body = qs('#cartDrawerBody'), footer = qs('#cartDrawerFooter');
     if (!this.items.length) {
-      body.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><p>Your bag is empty.</p></div>';
-      footer.innerHTML = '<a href="#/sarees" class="btn btn-dark" data-link style="width:100%;justify-content:center;" onclick="Cart.close()">Continue Shopping</a>';
+      body.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><h3>Your bag is empty</h3><p>Find something you’ll love.</p></div>';
+      footer.innerHTML = '<a href="#/sarees" class="btn btn-primary btn-block" data-link onclick="Cart.close()">Continue Shopping</a>';
       return;
     }
     body.innerHTML = this.items.map(function (i) {
+      var vid = i.variantId ? "'" + i.variantId + "'" : 'null';
       return '<div class="cart-line">' +
-        '<img src="' + escapeHtml(i.image || '') + '" onerror="this.style.visibility=\'hidden\'">' +
+        '<img src="' + escapeHtml(imgSrc(i.image)) + '" alt="" onerror="this.src=PLACEHOLDER_IMG">' +
         '<div class="cart-line-info">' +
-        '<p class="name">' + escapeHtml(i.name) + '</p>' +
+        '<div class="cart-line-top"><p class="name">' + escapeHtml(i.name) + '</p><span class="price">' + formatPrice(i.price) + '</span></div>' +
         '<p class="meta">' + [i.color, i.size].filter(Boolean).map(escapeHtml).join(' &middot; ') + '</p>' +
-        '<p class="price" style="margin:6px 0 0;">' + formatPrice(i.price) + '</p>' +
+        '<div class="cart-line-bottom">' +
         '<div class="qty-stepper">' +
-        '<button onclick="Cart.setQty(\'' + i.productId + '\',' + (i.variantId ? "'" + i.variantId + "'" : 'null') + ',' + (i.qty - 1) + ')">&minus;</button>' +
+        '<button aria-label="Decrease" onclick="Cart.setQty(\'' + i.productId + '\',' + vid + ',' + (i.qty - 1) + ')">&minus;</button>' +
         '<span>' + i.qty + '</span>' +
-        '<button onclick="Cart.setQty(\'' + i.productId + '\',' + (i.variantId ? "'" + i.variantId + "'" : 'null') + ',' + (i.qty + 1) + ')">+</button>' +
+        '<button aria-label="Increase" onclick="Cart.setQty(\'' + i.productId + '\',' + vid + ',' + (i.qty + 1) + ')">+</button>' +
         '</div>' +
-        '<div style="margin-top:8px;display:flex;gap:14px;">' +
-        '<button class="link-btn" onclick="Cart.remove(\'' + i.productId + '\',' + (i.variantId ? "'" + i.variantId + "'" : 'null') + ')">Remove</button>' +
-        '<button class="link-btn" onclick="Cart.saveForLater(\'' + i.productId + '\',' + (i.variantId ? "'" + i.variantId + "'" : 'null') + ')">Save for Later</button>' +
-        '</div>' +
+        '<div class="cart-line-links">' +
+        '<button class="link-btn" onclick="Cart.saveForLater(\'' + i.productId + '\',' + vid + ')">Save</button>' +
+        '<button class="link-btn" onclick="Cart.remove(\'' + i.productId + '\',' + vid + ')">Remove</button>' +
+        '</div></div>' +
         '</div></div>';
     }).join('');
-    footer.innerHTML = '<div style="display:flex;justify-content:space-between;margin-bottom:14px;font-weight:700;">' +
-      '<span>Subtotal</span><span>' + formatPrice(this.subtotal()) + '</span></div>' +
-      '<a href="#/cart" class="btn btn-ghost" data-link style="width:100%;justify-content:center;margin-bottom:8px;" onclick="Cart.close()">View Bag</a>' +
-      '<a href="#/checkout" class="btn btn-dark" data-link style="width:100%;justify-content:center;" onclick="Cart.close()">Checkout</a>';
+    var fee = this.deliveryFee();
+    footer.innerHTML = '<div class="drawer-total"><span>Subtotal</span><strong>' + formatPrice(this.subtotal()) + '</strong></div>' +
+      '<p class="drawer-note">' + (fee === 0 ? 'Complimentary delivery on this order.' : 'Add ' + formatPrice(this.FREE_SHIP_OVER - this.subtotal()) + ' more for complimentary delivery.') + '</p>' +
+      '<a href="#/checkout" class="btn btn-primary btn-block" data-link onclick="Cart.close()">Checkout</a>' +
+      '<a href="#/cart" class="btn btn-ghost btn-block" data-link onclick="Cart.close()">View Bag</a>';
   },
   saveForLater: function (productId, variantId) {
     var it = this.items.find(function (i) { return i.productId === productId && i.variantId === variantId; });
@@ -258,19 +260,21 @@ function renderAuthModal(mode) {
   var body = qs('#authModalBody');
   if (mode === 'login') {
     body.innerHTML =
-      '<div style="padding:32px;">' +
-      '<h3 class="display" style="margin:0 0 6px;">Welcome back</h3>' +
-      '<p style="color:var(--ink-soft);font-size:13.5px;margin:0 0 22px;">Log in to continue.</p>' +
-      '<button class="btn btn-ghost" style="width:100%;justify-content:center;margin-bottom:14px;" onclick="Auth.loginWithGoogle()">Continue with Google</button>' +
-      '<div style="text-align:center;color:var(--ink-soft);font-size:12px;margin-bottom:14px;">or</div>' +
+      '<button class="modal-close" onclick="closeAllOverlays()" aria-label="Close">&times;</button>' +
+      '<div class="modal-pad">' +
+      '<p class="eyebrow">Account</p>' +
+      '<h3 class="modal-title">Welcome <em>back</em></h3>' +
+      '<p class="modal-sub">Log in to continue.</p>' +
       '<form id="loginForm">' +
-      '<div class="field"><label>Email</label><input type="email" required id="loginEmail"></div>' +
-      '<div class="field"><label>Password</label><input type="password" required id="loginPassword"></div>' +
+      '<div class="field"><label for="loginEmail">Email</label><input type="email" required id="loginEmail" autocomplete="email"></div>' +
+      '<div class="field"><label for="loginPassword">Password</label><input type="password" required id="loginPassword" autocomplete="current-password"></div>' +
       '<div class="field-error hidden" id="loginError"></div>' +
-      '<button class="btn btn-dark" style="width:100%;justify-content:center;" type="submit">Log In</button>' +
+      '<button class="btn btn-primary btn-block" type="submit">Log In</button>' +
       '</form>' +
-      '<p style="text-align:center;font-size:13px;margin-top:16px;"><a href="#" onclick="renderAuthModal(\'forgot\');return false;">Forgot password?</a></p>' +
-      '<p style="text-align:center;font-size:13px;">New here? <a href="#" onclick="renderAuthModal(\'signup\');return false;">Create an account</a></p>' +
+      '<div class="divider-or">or</div>' +
+      '<button class="btn btn-ghost btn-block" onclick="Auth.loginWithGoogle()">Continue with Google</button>' +
+      '<p class="modal-foot"><a href="#" onclick="renderAuthModal(\'forgot\');return false;">Forgot password?</a></p>' +
+      '<p class="modal-foot" style="margin-top:8px;">New here? <a href="#" onclick="renderAuthModal(\'signup\');return false;">Create an account</a></p>' +
       '</div>';
     qs('#loginForm').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -281,16 +285,19 @@ function renderAuthModal(mode) {
     });
   } else if (mode === 'signup') {
     body.innerHTML =
-      '<div style="padding:32px;">' +
-      '<h3 class="display" style="margin:0 0 6px;">Create your account</h3>' +
+      '<button class="modal-close" onclick="closeAllOverlays()" aria-label="Close">&times;</button>' +
+      '<div class="modal-pad">' +
+      '<p class="eyebrow">Join Zari</p>' +
+      '<h3 class="modal-title">Create your <em>account</em></h3>' +
+      '<p class="modal-sub">Save your wishlist, track orders and check out faster.</p>' +
       '<form id="signupForm">' +
-      '<div class="field"><label>Full name</label><input type="text" required id="signupName"></div>' +
-      '<div class="field"><label>Email</label><input type="email" required id="signupEmail"></div>' +
-      '<div class="field"><label>Password</label><input type="password" required minlength="6" id="signupPassword"></div>' +
+      '<div class="field"><label for="signupName">Full name</label><input type="text" required id="signupName" autocomplete="name"></div>' +
+      '<div class="field"><label for="signupEmail">Email</label><input type="email" required id="signupEmail" autocomplete="email"></div>' +
+      '<div class="field"><label for="signupPassword">Password</label><input type="password" required minlength="6" id="signupPassword" autocomplete="new-password"></div>' +
       '<div class="field-error hidden" id="signupError"></div>' +
-      '<button class="btn btn-dark" style="width:100%;justify-content:center;" type="submit">Sign Up</button>' +
+      '<button class="btn btn-primary btn-block" type="submit">Sign Up</button>' +
       '</form>' +
-      '<p style="text-align:center;font-size:13px;margin-top:16px;">Already have an account? <a href="#" onclick="renderAuthModal(\'login\');return false;">Log in</a></p>' +
+      '<p class="modal-foot">Already have an account? <a href="#" onclick="renderAuthModal(\'login\');return false;">Log in</a></p>' +
       '</div>';
     qs('#signupForm').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -301,18 +308,20 @@ function renderAuthModal(mode) {
     });
   } else if (mode === 'forgot') {
     body.innerHTML =
-      '<div style="padding:32px;">' +
-      '<h3 class="display" style="margin:0 0 6px;">Reset password</h3>' +
+      '<button class="modal-close" onclick="closeAllOverlays()" aria-label="Close">&times;</button>' +
+      '<div class="modal-pad">' +
+      '<h3 class="modal-title">Reset <em>password</em></h3>' +
+      '<p class="modal-sub">We’ll email you a link to set a new one.</p>' +
       '<form id="forgotForm">' +
-      '<div class="field"><label>Email</label><input type="email" required id="forgotEmail"></div>' +
-      '<button class="btn btn-dark" style="width:100%;justify-content:center;" type="submit">Send Reset Link</button>' +
+      '<div class="field"><label for="forgotEmail">Email</label><input type="email" required id="forgotEmail" autocomplete="email"></div>' +
+      '<button class="btn btn-primary btn-block" type="submit">Send Reset Link</button>' +
       '</form>' +
-      '<p style="text-align:center;font-size:13px;margin-top:16px;"><a href="#" onclick="renderAuthModal(\'login\');return false;">Back to login</a></p>' +
+      '<p class="modal-foot"><a href="#" onclick="renderAuthModal(\'login\');return false;">Back to login</a></p>' +
       '</div>';
     qs('#forgotForm').addEventListener('submit', function (e) {
       e.preventDefault();
       Auth.resetPassword(qs('#forgotEmail').value).then(function () {
-        body.innerHTML = '<div style="padding:32px;text-align:center;"><h3 class="display">Check your email</h3><p style="color:var(--ink-soft);">We\'ve sent a reset link if that account exists.</p></div>';
+        body.innerHTML = '<button class="modal-close" onclick="closeAllOverlays()" aria-label="Close">&times;</button><div class="modal-pad text-center"><h3 class="modal-title">Check your <em>email</em></h3><p class="modal-sub" style="margin:0;">We\'ve sent a reset link if that account exists.</p></div>';
       });
     });
   }
@@ -332,20 +341,24 @@ var Location = {
   },
   open: function () {
     qs('#locationModalBody').innerHTML =
-      '<div style="padding:28px;">' +
-      '<h3 class="display" style="margin:0 0 18px;">Delivery Location</h3>' +
-      '<button class="btn btn-ghost" style="width:100%;justify-content:center;margin-bottom:10px;" onclick="Location.useCurrentLocation()">Use My Current Location</button>' +
-      '<div class="field" style="margin-top:16px;"><label>Enter PIN code</label>' +
-      '<div style="display:flex;gap:8px;"><input type="text" id="pinInput" maxlength="6" placeholder="e.g. 400001">' +
-      '<button class="btn btn-dark" onclick="Location.checkPin()">Check</button></div></div>' +
-      '<div id="pinResult" style="margin-top:8px;font-size:13.5px;"></div>' +
-      '<div id="savedAddressesForLocation" style="margin-top:20px;"></div>' +
+      '<button class="modal-close" onclick="closeAllOverlays()" aria-label="Close">&times;</button>' +
+      '<div class="modal-pad">' +
+      '<p class="eyebrow">Delivery</p>' +
+      '<h3 class="modal-title">Where should we <em>deliver?</em></h3>' +
+      '<p class="modal-sub">Check availability for your PIN code.</p>' +
+      '<div class="field"><label for="pinInput">PIN code</label>' +
+      '<div class="inline-field"><input type="text" id="pinInput" maxlength="6" inputmode="numeric" placeholder="e.g. 400001">' +
+      '<button class="btn btn-primary btn-sm" onclick="Location.checkPin()">Check</button></div></div>' +
+      '<div id="pinResult" style="font-size:13.5px;min-height:20px;"></div>' +
+      '<div class="divider-or">or</div>' +
+      '<button class="btn btn-ghost btn-block" onclick="Location.useCurrentLocation()">Use My Current Location</button>' +
+      '<div id="savedAddressesForLocation" style="margin-top:24px;"></div>' +
       '</div>';
     if (Auth.user) {
       supabaseClient.from('addresses').select('*').eq('customer_id', Auth.user.id).then(function (res) {
         var list = res.data || [];
         if (!list.length) return;
-        qs('#savedAddressesForLocation').innerHTML = '<h4 style="font-size:12.5px;text-transform:uppercase;color:var(--maroon-900);margin-bottom:10px;">Saved Addresses</h4>' +
+        qs('#savedAddressesForLocation').innerHTML = '<p class="pdp-option-label">Saved Addresses</p>' +
           list.map(function (a) {
             return '<div class="filter-option" style="cursor:pointer;" onclick=\'Location.selectAddress(' + JSON.stringify(a).replace(/'/g, "&#39;") + ')\'>' +
               '<span>' + escapeHtml(a.label || a.city) + ' &mdash; ' + escapeHtml(a.pincode) + '</span></div>';
@@ -366,15 +379,15 @@ var Location = {
   },
   checkPin: function () {
     var pin = qs('#pinInput').value.trim();
-    if (!/^\d{6}$/.test(pin)) { qs('#pinResult').innerHTML = '<span style="color:var(--danger);">Enter a valid 6-digit PIN.</span>'; return; }
+    if (!/^\d{6}$/.test(pin)) { qs('#pinResult').innerHTML = '<span class="msg-err">Enter a valid 6-digit PIN.</span>'; return; }
     qs('#pinResult').textContent = 'Checking…';
     supabaseClient.functions.invoke('check-delivery', { body: { pincode: pin } }).then(function (res) {
       var ok = res.data && res.data.serviceable;
       qs('#pinResult').innerHTML = ok
-        ? '<span style="color:var(--success);">Delivery available to ' + escapeHtml(pin) + '.</span>'
-        : '<span style="color:var(--danger);">Currently unavailable at this PIN.</span>';
+        ? '<span class="msg-ok">Delivery available to ' + escapeHtml(pin) + '.</span>'
+        : '<span class="msg-err">Currently unavailable at this PIN.</span>';
       if (ok) { Location.current = { pincode: pin, city: (res.data && res.data.city) || pin }; Location.persist(); }
-    }).catch(function () { qs('#pinResult').innerHTML = '<span style="color:var(--danger);">Could not check right now.</span>'; });
+    }).catch(function () { qs('#pinResult').innerHTML = '<span class="msg-err">Could not check right now.</span>'; });
   }
 };
 Location.load();
@@ -400,24 +413,22 @@ var Search = {
   },
   openMobile: function () {
     qs('#searchSheetBody').innerHTML =
-      '<div style="display:flex;gap:10px;align-items:center;padding:16px;border-bottom:1px solid var(--line);">' +
-      '<input type="text" id="searchSheetInput" placeholder="Search sarees, fabric, colour&hellip;" style="flex:1;border:1px solid var(--line);border-radius:999px;padding:10px 16px;" autofocus>' +
-      '<button class="link-btn" onclick="closeAllOverlays()">Cancel</button></div>' +
-      '<div style="padding:16px;" id="searchSheetResults"></div>';
+      '<div class="search-sheet-bar">' +
+      '<input type="text" id="searchSheetInput" placeholder="Search sarees&hellip;" aria-label="Search">' +
+      '<button class="close-btn" onclick="closeAllOverlays()" aria-label="Close search">&times;</button></div>' +
+      '<div class="search-sheet-results" id="searchSheetResults"></div>';
     var recent = this.getRecent();
     if (recent.length) {
-      qs('#searchSheetResults').innerHTML = '<h4 style="font-size:12px;text-transform:uppercase;color:var(--ink-soft);margin-bottom:10px;">Recent</h4>' +
-        recent.map(function (t) { return '<div class="filter-option" style="cursor:pointer;" onclick="Search.run(\'' + escapeHtml(t).replace(/'/g, "\\'") + '\')">' + escapeHtml(t) + '</div>'; }).join('');
+      qs('#searchSheetResults').innerHTML = '<h4>Recent searches</h4><div class="link-list">' +
+        recent.map(function (t) { return '<a href="#" onclick="Search.run(\'' + escapeHtml(t).replace(/'/g, "\\'") + '\');return false;">' + escapeHtml(t) + '</a>'; }).join('') + '</div>';
     }
     qs('#searchSheetInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') Search.run(this.value); });
     openOverlay(); qs('#searchSheet').classList.add('open'); document.body.style.overflow = 'hidden';
+    setTimeout(function () { var i = qs('#searchSheetInput'); if (i) i.focus(); }, 50);
   }
 };
-['#headerSearchInput', '#headerSearchInputMobile'].forEach(function (sel) {
-  var el = qs(sel); if (!el) return;
-  el.addEventListener('focus', function () { if (window.innerWidth <= 900) { Search.openMobile(); this.blur(); } });
-  el.addEventListener('keydown', function (e) { if (e.key === 'Enter') Search.run(this.value); });
-});
+qs('#headerSearchInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') { Search.run(this.value); this.value = ''; this.blur(); } });
+qs('#mobileSearchBtn').addEventListener('click', function () { Search.openMobile(); });
 
 /* ---------------------------------------------------------
    Data layer (Supabase queries)
@@ -532,38 +543,44 @@ function productCardHtml(p) {
   var shortInfo = p.description ? String(p.description).replace(/\s+/g, ' ').slice(0, 64) + (p.description.length > 64 ? '…' : '')
     : [p.fabric, p.blouseIncluded ? 'Blouse included' : null].filter(Boolean).join(' · ');
   return '<div class="product-card reveal">' +
+    '<div class="card-media-wrap">' +
     '<a href="#/product/' + p.slug + '" data-link>' +
     '<div class="product-media">' +
     '<div class="product-badges">' +
     (p.newArrival ? '<span class="badge badge-new">New</span>' : '') +
     (disc > 0 ? '<span class="badge badge-sale">' + disc + '% Off</span>' : '') +
     (p.bestSeller ? '<span class="badge badge-best">Best Seller</span>' : '') +
-    (outOfStock ? '<span class="badge badge-oos">Out of Stock</span>' : '') +
+    (outOfStock ? '<span class="badge badge-oos">Sold Out</span>' : '') +
     '</div>' +
     '<img class="img-main" src="' + escapeHtml(img1) + '" alt="' + escapeHtml(p.name) + '" loading="lazy" onerror="this.src=PLACEHOLDER_IMG">' +
     (img2 !== img1 ? '<img class="img-alt" src="' + escapeHtml(img2) + '" alt="" loading="lazy">' : '') +
     '</div></a>' +
-    '<button class="wishlist-toggle ' + (Wishlist.has(p.id) ? 'active' : '') + '" data-wishlist-id="' + p.id + '" onclick="Wishlist.toggle(\'' + p.id + '\')" title="Wishlist">' +
-    '<svg viewBox="0 0 24 24" fill="' + (Wishlist.has(p.id) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.3 4 6.3 4c2 0 3.6 1.1 4.7 2.8C12.1 5.1 13.7 4 15.7 4c4 0 5.8 4 4.3 7.7-2.5 4.6-10 9.3-10 9.3z"/></svg></button>' +
+    '<button class="wishlist-toggle ' + (Wishlist.has(p.id) ? 'active' : '') + '" data-wishlist-id="' + p.id + '" onclick="Wishlist.toggle(\'' + p.id + '\')" aria-label="Add to wishlist">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.3 4 6.3 4c2 0 3.6 1.1 4.7 2.8C12.1 5.1 13.7 4 15.7 4c4 0 5.8 4 4.3 7.7-2.5 4.6-10 9.3-10 9.3z"/></svg></button>' +
     '<div class="quick-actions">' +
     '<button onclick="openQuickView(\'' + p.slug + '\')">Quick View</button>' +
-    '<a class="primary" href="#/product/' + p.slug + '" data-link>View Details</a>' +
-    '</div>' +
+    (outOfStock
+      ? '<button class="primary" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
+      : '<button class="primary" onclick="cardAddToCart(\'' + p.id + '\')">Add to Bag</button>') +
+    '</div></div>' +
     '<div class="product-info">' +
     (meta.length ? '<p class="card-meta">' + meta.map(escapeHtml).join(' · ') + '</p>' : '') +
-    '<a href="#/product/' + p.slug + '" data-link><p class="name">' + escapeHtml(p.name) + '</p></a>' +
-    '<p class="card-sku">Code: ' + escapeHtml(p.sku) + '</p>' +
+    '<a href="#/product/' + p.slug + '" data-link><h3 class="name">' + escapeHtml(p.name) + '</h3></a>' +
+    '<p class="card-sku">Code ' + escapeHtml(p.sku) + '</p>' +
     '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' +
     (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span><span class="discount">' + disc + '% off</span>' : '') +
     '</div>' +
     (shortInfo ? '<p class="card-short">' + escapeHtml(shortInfo) + '</p>' : '') +
+    '<div class="card-foot">' +
     '<p class="stock-status stock-' + stk.cls + '">' + stk.text + '</p>' +
-    (p.colors.length > 1 ? '<div class="swatches">' + p.colors.slice(0, 6).map(function (c) { return '<span class="swatch" style="background:' + escapeHtml(c.hex || '#ccc') + '" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div>' : '') +
+    (p.colors.length > 1 ? '<div class="swatches">' + p.colors.slice(0, 5).map(function (c) { return '<span class="swatch" style="background:' + escapeHtml(c.hex || '#ccc') + '" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div>' : '') +
+    '</div>' +
     '<div class="card-actions">' +
     (outOfStock
-      ? '<button class="btn btn-ghost card-btn" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
-      : '<button class="btn btn-dark card-btn" onclick="cardAddToCart(\'' + p.id + '\')">Add to Cart</button>' +
-        '<button class="btn btn-primary card-btn" onclick="cardBuyNow(\'' + p.id + '\')">Buy Now</button>') +
+      ? '<button class="link-btn strong" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
+      : '<button class="link-btn strong" onclick="cardAddToCart(\'' + p.id + '\')">Add to Bag</button>' +
+        '<button class="link-btn" onclick="cardBuyNow(\'' + p.id + '\')">Buy Now</button>') +
+    '<a class="link-btn" href="#/product/' + p.slug + '" data-link>Details</a>' +
     '</div>' +
     '</div></div>';
 }
@@ -576,7 +593,7 @@ function renderGridInto(sel, products, emptyMsg, isError) {
 }
 function renderSkeletonGrid(sel, count) {
   var el = qs(sel); if (!el) return;
-  el.innerHTML = new Array(count || 4).fill('<div class="skeleton-card"><div class="skeleton skeleton-media"></div><div class="skeleton skeleton-line" style="width:70%"></div><div class="skeleton skeleton-line" style="width:40%"></div></div>').join('');
+  el.innerHTML = new Array(count || 4).fill('<div class="skeleton-card"><div class="skeleton skeleton-media"></div><div class="skeleton skeleton-line" style="width:40%"></div><div class="skeleton skeleton-line" style="width:75%;height:18px;"></div><div class="skeleton skeleton-line" style="width:30%"></div></div>').join('');
 }
 
 /* ---------------------------------------------------------
@@ -584,18 +601,17 @@ function renderSkeletonGrid(sel, count) {
    static default hero markup already in index.html when no banner is active.
    --------------------------------------------------------- */
 var HeroBanner = {
-  banners: [], index: 0, timer: null, defaultHtml: null,
+  banners: [], index: 0, timer: null, defaultHtml: null, defaultMedia: null,
   load: function () {
-    var hero = qs('#homeHero');
     if (this.defaultHtml == null) this.defaultHtml = qs('#heroContent').innerHTML;
+    if (this.defaultMedia == null) this.defaultMedia = qs('#heroMedia').innerHTML;
     Data.getActiveBanners().then(function (banners) {
       HeroBanner.banners = banners;
       HeroBanner.index = 0;
       clearInterval(HeroBanner.timer);
       if (!banners.length) {
-        hero.classList.remove('has-banner-image');
-        hero.style.backgroundImage = '';
         qs('#heroContent').innerHTML = HeroBanner.defaultHtml;
+        qs('#heroMedia').innerHTML = HeroBanner.defaultMedia;
         qs('#heroDots').innerHTML = '';
         return;
       }
@@ -608,16 +624,17 @@ var HeroBanner = {
   go: function (i) { this.index = i; this.render(); },
   render: function () {
     var b = this.banners[this.index];
-    var hero = qs('#homeHero');
-    hero.classList.add('has-banner-image');
-    hero.style.backgroundImage = 'linear-gradient(180deg, rgba(31,10,10,.15), rgba(31,10,10,.55)), url("' + b.image_url.replace(/"/g, '') + '")';
+    qs('#heroMedia').innerHTML = b.image_url
+      ? '<img src="' + escapeHtml(b.image_url) + '" alt="' + escapeHtml(b.title || '') + '">'
+      : HeroBanner.defaultMedia;
     qs('#heroContent').innerHTML =
-      (b.offer_text ? '<span class="hero-offer-badge">' + escapeHtml(b.offer_text) + '</span><br>' : '') +
-      '<div class="eyebrow">' + escapeHtml(b.subtitle ? '' : 'The Zari Edit') + '</div>' +
-      '<h1>' + escapeHtml(b.title) + '</h1>' +
-      (b.subtitle ? '<p>' + escapeHtml(b.subtitle) + '</p>' : '') +
-      '<div style="display:flex;gap:14px;flex-wrap:wrap;">' +
+      (b.offer_text ? '<span class="hero-offer-badge">' + escapeHtml(b.offer_text) + '</span>' : '') +
+      '<p class="eyebrow">The Zari Edit</p>' +
+      '<h1 class="hero-title">' + escapeHtml(b.title) + '</h1>' +
+      (b.subtitle ? '<p class="hero-lede">' + escapeHtml(b.subtitle) + '</p>' : '') +
+      '<div class="hero-actions">' +
       '<a href="' + escapeHtml(b.cta_link || '#/sarees') + '" class="btn btn-primary" ' + (String(b.cta_link || '').indexOf('#/') === 0 ? 'data-link' : 'target="_blank" rel="noopener"') + '>' + escapeHtml(b.cta_text || 'Shop Now') + '</a>' +
+      '<a href="#/sarees" class="link-arrow" data-link>All Sarees</a>' +
       '</div>';
     qs('#heroDots').innerHTML = this.banners.length > 1 ? this.banners.map(function (bn, i) {
       return '<button class="' + (i === HeroBanner.index ? 'active' : '') + '" onclick="HeroBanner.go(' + i + ')" aria-label="Show banner ' + (i + 1) + '"></button>';
@@ -630,34 +647,31 @@ var HeroBanner = {
    --------------------------------------------------------- */
 function renderHome() {
   renderSkeletonGrid('#newArrivalsGrid', 4);
-  renderSkeletonGrid('#featuredGrid', 4);
+  renderSkeletonGrid('#featuredGrid', 5);
   renderSkeletonGrid('#moreStylesGrid', 4);
   HeroBanner.load();
 
   Data.getCategories('saree_type').then(function (cats) {
-    var wrap = qs('#quickCategories');
-    if (!cats.length) { wrap.innerHTML = ''; return; }
-    wrap.innerHTML = cats.slice(0, 6).map(function (c) {
-      return '<a href="#/sarees?type=' + c.slug + '" class="quick-cat" data-link><div class="thumb"><img src="assets/category-placeholder.jpg" onerror="this.parentElement.style.background=\'var(--cream-300)\'" alt=""></div><span>' + escapeHtml(c.name) + '</span></a>';
+    document.getElementById('sectionShopByType').style.display = cats.length ? '' : 'none';
+    qs('#shopByTypeList').innerHTML = cats.map(function (c, i) {
+      return '<a href="#/sarees?type=' + c.slug + '" class="weave-row" data-link>' +
+        '<span class="weave-num">' + (i < 9 ? '0' : '') + (i + 1) + '</span>' +
+        '<span class="weave-name">' + escapeHtml(c.name) + '</span>' +
+        '<span class="weave-arrow">&rarr;</span></a>';
     }).join('');
-    var chipsWrap = qs('#shopByTypeChips');
-    chipsWrap.innerHTML = cats.map(function (c) { return '<a href="#/sarees?type=' + c.slug + '" class="chip" data-link>' + escapeHtml(c.name) + '</a>'; }).join('');
   });
 
-  Data.getCategories('fabric').then(function (cats) {
-    var wrap = qs('#shopByFabricChips');
-    document.getElementById('sectionShopByFabric').style.display = cats.length ? '' : 'none';
-    wrap.innerHTML = cats.map(function (c) { return '<a href="#/sarees?fabric=' + c.slug + '" class="chip" data-link>' + escapeHtml(c.name) + '</a>'; }).join('');
-  });
-
-  Data.getCategories('occasion').then(function (cats) {
-    var wrap = qs('#shopByOccasionChips');
-    document.getElementById('sectionShopByOccasion').style.display = cats.length ? '' : 'none';
-    wrap.innerHTML = cats.map(function (c) { return '<a href="#/sarees?occasion=' + c.slug + '" class="chip" data-link>' + escapeHtml(c.name) + '</a>'; }).join('');
+  Promise.all([Data.getCategories('fabric'), Data.getCategories('occasion')]).then(function (r) {
+    document.getElementById('sectionShopByFabric').style.display = r[0].length ? '' : 'none';
+    document.getElementById('sectionShopByOccasion').style.display = r[1].length ? '' : 'none';
+    document.getElementById('sectionShopBy').style.display = (r[0].length || r[1].length) ? '' : 'none';
+    qs('#shopByFabricList').innerHTML = r[0].map(function (c) { return '<a href="#/sarees?fabric=' + c.slug + '" data-link>' + escapeHtml(c.name) + '</a>'; }).join('');
+    qs('#shopByOccasionList').innerHTML = r[1].map(function (c) { return '<a href="#/sarees?occasion=' + c.slug + '" data-link>' + escapeHtml(c.name) + '</a>'; }).join('');
   });
 
   Data.listProducts({ newArrival: true, limit: 8 }).then(function (r) { renderGridInto('#newArrivalsGrid', r.products, 'New arrivals will appear here soon.', !!r.error); });
-  Data.listProducts({ featured: true, limit: 8 }).then(function (r) {
+  // Featured grid leads with one large card (2x2) + four regular — 5 fills the layout cleanly.
+  Data.listProducts({ featured: true, limit: 5 }).then(function (r) {
     document.getElementById('sectionFeaturedCollection').style.display = (r.products.length || r.error) ? '' : 'none';
     renderGridInto('#featuredGrid', r.products, 'Featured picks are on the way.', !!r.error);
   });
@@ -676,14 +690,15 @@ function renderHome() {
     var section = document.getElementById('sectionCampaign');
     if (!c) { section.style.display = 'none'; return; }
     section.style.display = '';
-    qs('#campaignBanner').innerHTML = '<div class="hero" style="min-height:40vh;border-radius:var(--radius-lg);"><div class="hero-content"><div class="eyebrow">Live Now</div><h2 style="color:#fff;">' + escapeHtml(c.name) + '</h2></div></div>';
+    qs('#campaignBanner').innerHTML = '<div class="campaign"><p class="eyebrow">Live Now</p><h2>' + escapeHtml(c.name) + '</h2><a href="#/offers" class="link-arrow link-arrow-light" data-link>Shop the offer</a></div>';
   });
 
   Data.getApprovedReviews(3).then(function (reviews) {
     document.getElementById('sectionReviews').style.display = reviews.length ? '' : 'none';
     qs('#reviewsGrid').innerHTML = reviews.map(function (r) {
-      return '<div class="review-card"><div class="stars">' + '&#9733;'.repeat(r.rating) + '</div><p style="margin:12px 0;font-size:14px;">' + escapeHtml(r.review_text || '') + '</p><p style="font-size:12.5px;color:var(--ink-soft);">Verified purchase &middot; ' + escapeHtml((r.products && r.products.name) || '') + '</p></div>';
+      return '<figure class="quote-card reveal" style="margin:0;"><div class="stars">' + '&#9733;'.repeat(r.rating) + '</div><blockquote>&ldquo;' + escapeHtml(r.review_text || '') + '&rdquo;</blockquote><figcaption class="who">Verified purchase &middot; ' + escapeHtml((r.products && r.products.name) || '') + '</figcaption></figure>';
     }).join('');
+    observeReveal(qs('#reviewsGrid'));
   });
 
   observeReveal(document);
@@ -707,35 +722,46 @@ function renderCatalog(routeParams, query) {
   if (routeParams === 'offers') { title = 'Special Offers'; filters.onSale = true; }
   filters.sort = CatalogState.sort;
   qs('#catalogTitle').textContent = title;
-  renderSkeletonGrid('#catalogGrid', 8);
-  renderFilterSidebar();
+  qs('#catalogCrumb').textContent = title;
+  qs('#sortSelect').value = CatalogState.sort;
+  qs('#catalogCount').textContent = '';
+  renderSkeletonGrid('#catalogGrid', 6);
+  renderFilterSidebar(query);
 
   Data.listProducts(filters).then(function (r) {
     renderGridInto('#catalogGrid', r.products, 'No products match yet.', !!r.error);
     qs('#catalogCount').textContent = r.count ? (r.count + ' piece' + (r.count === 1 ? '' : 's')) : '';
   });
 }
-function renderFilterSidebar() {
+function renderFilterSidebar(query) {
+  query = query || {};
   Promise.all([Data.getCategories('saree_type'), Data.getCategories('fabric'), Data.getCategories('occasion')]).then(function (r) {
     var html =
-      filterGroupHtml('Saree Type', r[0], 'type') +
-      filterGroupHtml('Fabric', r[1], 'fabric') +
-      filterGroupHtml('Occasion', r[2], 'occasion');
+      filterGroupHtml('Saree Type', r[0], 'type', query) +
+      filterGroupHtml('Fabric', r[1], 'fabric', query) +
+      filterGroupHtml('Occasion', r[2], 'occasion', query);
     qs('#filterSidebar').innerHTML = html || '<p style="color:var(--ink-soft);font-size:13px;">Filters will appear once categories are set up.</p>';
-    qs('#filterSheetBody').innerHTML = html;
+    qs('#filterSheetBody').innerHTML = '<h3 class="sheet-title">Filter</h3>' + html;
+    // Active filter tags above the grid, each clearing back to the full catalog.
+    var all = r[0].map(function (c) { return ['type', c]; }).concat(r[1].map(function (c) { return ['fabric', c]; }), r[2].map(function (c) { return ['occasion', c]; }));
+    var active = all.filter(function (x) { return query[x[0]] === x[1].slug; });
+    qs('#activeFilters').innerHTML = active.map(function (x) {
+      return '<a href="#/sarees" class="filter-tag" data-link>' + escapeHtml(x[1].name) + '<span aria-label="Clear">&times;</span></a>';
+    }).join('');
   });
 }
-function filterGroupHtml(label, cats, param) {
+function filterGroupHtml(label, cats, param, query) {
   if (!cats.length) return '';
   return '<div class="filter-group"><h4>' + label + '</h4>' + cats.map(function (c) {
-    return '<label class="filter-option"><input type="checkbox" onchange="location.hash=\'#/sarees?' + param + '=' + c.slug + '\'"> ' + escapeHtml(c.name) + '</label>';
+    var on = query && query[param] === c.slug;
+    return '<label class="filter-option' + (on ? ' is-active' : '') + '"><input type="checkbox"' + (on ? ' checked' : '') + ' onchange="location.hash=this.checked?\'#/sarees?' + param + '=' + c.slug + '\':\'#/sarees\'"> ' + escapeHtml(c.name) + '</label>';
   }).join('') + '</div>';
 }
 qs('#sortSelect').addEventListener('change', function () { CatalogState.sort = this.value; Router.rerender(); });
 qs('#openFilterSheet').addEventListener('click', function () { openOverlay(); qs('#filterSheet').classList.add('open'); document.body.style.overflow = 'hidden'; });
 qs('#openSortSheet').addEventListener('click', function () {
-  qs('#sortSheetBody').innerHTML = ['new:New Arrivals', 'price-asc:Price: Low to High', 'price-desc:Price: High to Low', 'discount:Discount'].map(function (o) {
-    var parts = o.split(':'); return '<div class="filter-option" style="cursor:pointer;" onclick="CatalogState.sort=\'' + parts[0] + '\';Router.rerender();closeAllOverlays();">' + parts[1] + '</div>';
+  qs('#sortSheetBody').innerHTML = '<h3 class="sheet-title">Sort by</h3>' + ['new:New Arrivals', 'price-asc:Price: Low to High', 'price-desc:Price: High to Low', 'discount:Discount'].map(function (o) {
+    var parts = o.split(':'); return '<div class="filter-option' + (CatalogState.sort === parts[0] ? ' is-active' : '') + '" onclick="CatalogState.sort=\'' + parts[0] + '\';Router.rerender();closeAllOverlays();">' + parts[1] + '</div>';
   }).join('');
   openOverlay(); qs('#sortSheet').classList.add('open'); document.body.style.overflow = 'hidden';
 });
@@ -749,7 +775,7 @@ function pdpSetQty(delta) {
   var el = qs('#pdpQtyVal'); if (el) el.textContent = PDPState.qty;
 }
 function renderProductDetail(slug) {
-  qs('#pdpContainer').innerHTML = '<div class="skeleton skeleton-media" style="border-radius:var(--radius-md);"></div><div><div class="skeleton skeleton-line" style="width:60%;height:28px;"></div><div class="skeleton skeleton-line" style="width:30%;"></div></div>';
+  qs('#pdpContainer').innerHTML = '<div class="skeleton skeleton-media"></div><div><div class="skeleton skeleton-line" style="width:30%;"></div><div class="skeleton skeleton-line" style="width:80%;height:44px;margin-top:20px;"></div><div class="skeleton skeleton-line" style="width:25%;height:20px;margin-top:20px;"></div></div>';
   Data.getProductBySlug(slug).then(function (p) {
     if (!p) { qs('#pdpContainer').innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Product not found.</div>'; return; }
     PDPState.product = p; PDPState.activeImage = 0; PDPState.activeColor = p.colors[0] ? p.colors[0].name : null; PDPState.qty = 1;
@@ -770,33 +796,35 @@ function renderProductDetail(slug) {
       ['Product Code', p.sku], ['HSN Code', p.hsnCode]
     ].filter(function (d) { return d[1]; });
 
+    var metaLine = [p.primaryCategory, p.productType].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    var deliveryLabel = Location.current ? 'Delivering to <strong>' + escapeHtml(Location.current.city || Location.current.pincode) + '</strong>' : 'Check delivery to your PIN';
     qs('#pdpContainer').innerHTML =
-      '<div>' +
-      '<div class="pdp-gallery-main"><img id="pdpMainImg" src="' + escapeHtml(images[0]) + '" onerror="this.src=PLACEHOLDER_IMG"></div>' +
-      '<div class="pdp-thumbs">' + images.map(function (img, i) { return '<img src="' + escapeHtml(img) + '" class="' + (i === 0 ? 'active' : '') + '" onclick="setPdpImage(' + i + ')" onerror="this.src=PLACEHOLDER_IMG">'; }).join('') + '</div>' +
+      '<div class="pdp-gallery">' +
+      '<div class="pdp-thumbs">' + images.map(function (img, i) { return '<img src="' + escapeHtml(img) + '" alt="View ' + (i + 1) + '" class="' + (i === 0 ? 'active' : '') + '" onclick="setPdpImage(' + i + ')" onerror="this.src=PLACEHOLDER_IMG">'; }).join('') + '</div>' +
+      '<div class="pdp-gallery-main"><img id="pdpMainImg" src="' + escapeHtml(images[0]) + '" alt="' + escapeHtml(p.name) + '" onerror="this.src=PLACEHOLDER_IMG"></div>' +
       '</div>' +
       '<div class="pdp-info">' +
-      (p.primaryCategory || p.productType ? '<p class="card-meta">' + [p.primaryCategory, p.productType].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; }).map(escapeHtml).join(' · ') + '</p>' : '') +
-      '<div style="display:flex;gap:8px;">' + (p.newArrival ? '<span class="badge badge-new">New</span>' : '') + (p.bestSeller ? '<span class="badge badge-best">Best Seller</span>' : '') + '</div>' +
+      '<nav class="crumbs"><a href="#/" data-link>Home</a><span>/</span><a href="#/sarees" data-link>Sarees</a>' + (p.primaryCategory ? '<span>/</span><span>' + escapeHtml(p.primaryCategory) + '</span>' : '') + '</nav>' +
+      (metaLine.length ? '<p class="eyebrow">' + metaLine.map(escapeHtml).join(' · ') + '</p>' : '') +
       '<h1 class="name">' + escapeHtml(p.name) + '</h1>' +
-      '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span> ' +
-      (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span> <span class="discount">' + disc + '% off</span>' : '') + '</div>' +
-      '<p class="sku">Product Code: ' + escapeHtml(p.sku) + '</p>' +
-      '<p class="stock-status stock-' + stk.cls + '" style="margin:0 0 6px;">' + stk.text + '</p>' +
-      (p.colors.length ? '<div class="field"><label>Colour: ' + escapeHtml(PDPState.activeColor || '') + '</label><div class="swatches">' +
-        p.colors.map(function (c) { return '<span class="swatch ' + (c.name === PDPState.activeColor ? 'active' : '') + '" style="width:26px;height:26px;background:' + escapeHtml(c.hex || '#ccc') + '" onclick="setPdpColor(\'' + escapeHtml(c.name) + '\')" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div></div>' : '') +
-      (outOfStock ? '' :
-        '<div class="field"><label>Quantity</label><div class="qty-stepper" style="height:40px;">' +
-        '<button type="button" onclick="pdpSetQty(-1)" style="width:38px;">&minus;</button><span id="pdpQtyVal" style="width:40px;">1</span><button type="button" onclick="pdpSetQty(1)" style="width:38px;">+</button></div></div>') +
-      '<div id="pdpDeliveryBlock" style="margin:18px 0;padding:14px;background:var(--cream-100);border-radius:var(--radius-sm);font-size:13px;">' +
-      '<button class="link-btn" onclick="Location.open()">Check delivery to your PIN</button></div>' +
-      '<div style="display:flex;gap:12px;margin-bottom:24px;">' +
+      ((p.newArrival || p.bestSeller) ? '<div class="pdp-badges">' + (p.newArrival ? '<span class="badge badge-sale">New</span>' : '') + (p.bestSeller ? '<span class="badge badge-best">Best Seller</span>' : '') + '</div>' : '') +
+      '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' +
+      (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span><span class="discount">' + disc + '% off</span>' : '') + '</div>' +
+      '<p class="pdp-tax">Inclusive of all taxes</p>' +
+      '<div class="pdp-meta-row"><span>Code ' + escapeHtml(p.sku) + '</span><span class="stock-status stock-' + stk.cls + '">' + stk.text + '</span></div>' +
+      (p.colors.length ? '<div class="pdp-option"><p class="pdp-option-label">Colour<span>' + escapeHtml(PDPState.activeColor || '') + '</span></p><div class="swatches">' +
+        p.colors.map(function (c) { return '<span class="swatch ' + (c.name === PDPState.activeColor ? 'active' : '') + '" style="background:' + escapeHtml(c.hex || '#ccc') + '" onclick="setPdpColor(\'' + escapeHtml(c.name) + '\')" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div></div>' : '') +
       (outOfStock
-        ? '<button class="btn btn-ghost" style="flex:1;justify-content:center;" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me When Available</button>'
-        : '<button class="btn btn-dark" style="flex:1;justify-content:center;" onclick="addPdpToCart()">Add to Cart</button><button class="btn btn-primary" style="flex:1;justify-content:center;" onclick="addPdpToCart(true)">Buy Now</button>') +
-      '<button class="btn btn-ghost wishlist-toggle" data-wishlist-id="' + p.id + '" onclick="Wishlist.toggle(\'' + p.id + '\')" style="position:static;width:44px;flex:0 0 auto;' + (Wishlist.has(p.id) ? 'color:var(--maroon-700);' : '') + '"><svg viewBox="0 0 24 24" width="18" height="18" fill="' + (Wishlist.has(p.id) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.3 4 6.3 4c2 0 3.6 1.1 4.7 2.8C12.1 5.1 13.7 4 15.7 4c4 0 5.8 4 4.3 7.7-2.5 4.6-10 9.3-10 9.3z"/></svg></button>' +
-      '</div>' +
-      (p.description ? '<div style="margin-bottom:8px;font-size:14px;line-height:1.7;color:var(--ink);">' + escapeHtml(p.description) + '</div>' : '') +
+        ? '<div class="pdp-buy-row"><button class="btn btn-primary" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me When Available</button>' + pdpWishBtn(p) + '</div>'
+        : '<div class="pdp-buy">' +
+          '<div class="qty-stepper qty-stepper-lg"><button type="button" aria-label="Decrease" onclick="pdpSetQty(-1)">&minus;</button><span id="pdpQtyVal">1</span><button type="button" aria-label="Increase" onclick="pdpSetQty(1)">+</button></div>' +
+          '<button class="btn btn-primary" onclick="addPdpToCart()">Add to Bag</button></div>' +
+          '<div class="pdp-buy-row"><button class="btn btn-ghost" onclick="addPdpToCart(true)">Buy Now</button>' + pdpWishBtn(p) + '</div>') +
+      '<div class="pdp-delivery" id="pdpDeliveryBlock">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/></svg>' +
+      '<span style="flex:1;">' + deliveryLabel + '</span>' +
+      '<button class="link-btn" onclick="Location.open()">' + (Location.current ? 'Change' : 'Check') + '</button></div>' +
+      (p.description ? '<p class="pdp-desc">' + escapeHtml(p.description) + '</p>' : '') +
       '<div id="pdpAccordion">' +
         accordionItemHtml('Product Details', '<table class="pdp-detail-table">' + details.map(function (d) { return '<tr><td>' + escapeHtml(d[0]) + '</td><td>' + escapeHtml(String(d[1])) + '</td></tr>'; }).join('') + '</table>', true) +
         accordionItemHtml('Delivery Information', 'Delivery availability is checked by PIN code at checkout. Serviceable orders are typically dispatched within 2–4 business days. Enter your PIN above to confirm delivery to your area.', false) +
@@ -806,8 +834,8 @@ function renderProductDetail(slug) {
 
     var stickyCta = qs('#pdpStickyCta');
     stickyCta.classList.add('show');
-    stickyCta.innerHTML = '<div style="flex:1;"><div class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</div></div>' +
-      (outOfStock ? '<button class="btn btn-ghost" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>' : '<button class="btn btn-dark" style="flex:1;" onclick="addPdpToCart()">Add to Cart</button><button class="btn btn-primary" style="flex:1;" onclick="addPdpToCart(true)">Buy Now</button>');
+    stickyCta.innerHTML = '<span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' +
+      (outOfStock ? '<button class="btn btn-primary" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>' : '<button class="btn btn-ghost" onclick="addPdpToCart(true)">Buy Now</button><button class="btn btn-primary" onclick="addPdpToCart()">Add to Bag</button>');
 
     // Related products — prefer same category/fabric, exclude current, in-stock first.
     var simFilters = { limit: 12 };
@@ -831,8 +859,12 @@ function renderProductDetail(slug) {
     observeReveal(document);
   });
 }
+function pdpWishBtn(p) {
+  return '<button class="pdp-wish' +(Wishlist.has(p.id) ? ' active' : '') + '" data-wishlist-id="' + p.id + '" onclick="Wishlist.toggle(\'' + p.id + '\')" aria-label="Add to wishlist">' +
+    '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.3 4 6.3 4c2 0 3.6 1.1 4.7 2.8C12.1 5.1 13.7 4 15.7 4c4 0 5.8 4 4.3 7.7-2.5 4.6-10 9.3-10 9.3z"/></svg></button>';
+}
 function accordionItemHtml(title, body, open) {
-  return '<div class="accordion-item ' + (open ? 'open' : '') + '"><div class="accordion-head" onclick="this.parentElement.classList.toggle(\'open\')"><span>' + title + '</span><span class="accordion-icon" style="transition:transform .2s;">+</span></div><div class="accordion-body"><div class="inner">' + body + '</div></div></div>';
+  return '<div class="accordion-item ' + (open ? 'open' : '') + '"><div class="accordion-head" role="button" tabindex="0" onclick="this.parentElement.classList.toggle(\'open\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}"><span>' + title + '</span><span class="accordion-icon">+</span></div><div class="accordion-body"><div class="inner">' + body + '</div></div></div>';
 }
 function setPdpImage(i) { PDPState.activeImage = i; qs('#pdpMainImg').src = PDPState.product.images[i]; qsa('.pdp-thumbs img').forEach(function (img, idx) { img.classList.toggle('active', idx === i); }); }
 function setPdpColor(name) { PDPState.activeColor = name; renderProductDetail(PDPState.product.slug); }
@@ -854,22 +886,25 @@ function openNotifyMe(productId) {
    Quick View modal
    --------------------------------------------------------- */
 function openQuickView(slug) {
-  qs('#quickViewBody').innerHTML = '<div style="padding:40px;"><div class="skeleton skeleton-line"></div></div>';
+  qs('#quickViewBody').innerHTML = '<div class="qv-grid"><div class="skeleton qv-media"></div><div class="qv-info"><div class="skeleton skeleton-line" style="width:40%"></div><div class="skeleton skeleton-line" style="height:36px;"></div></div></div>';
   openOverlay(); qs('#quickViewModal').classList.add('open'); document.body.style.overflow = 'hidden';
   Data.getProductBySlug(slug).then(function (p) {
     if (!p) return;
+    cacheProduct(p);
     var disc = discountPercent(p.price, p.oldPrice);
-    qs('#quickViewBody').innerHTML = '<button class="modal-close" onclick="closeAllOverlays()">&times;</button>' +
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;">' +
-      '<div class="product-media" style="aspect-ratio:auto;height:100%;"><img src="' + escapeHtml(p.images[0] || '') + '" style="width:100%;height:100%;object-fit:cover;"></div>' +
-      '<div style="padding:32px;">' +
-      '<h3 class="display">' + escapeHtml(p.name) + '</h3>' +
-      '<div class="price-row"><span class="price">' + formatPrice(p.price) + '</span> ' + (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span><span class="discount"> ' + disc + '% off</span>' : '') + '</div>' +
-      (p.fabric ? '<p style="color:var(--ink-soft);font-size:13.5px;margin:10px 0;">Fabric: ' + escapeHtml(p.fabric) + (p.blouseIncluded ? ' &middot; Blouse included' : '') + '</p>' : '') +
-      '<p style="font-size:13px;color:' + (p.stock > 0 ? 'var(--success)' : 'var(--danger)') + ';margin-bottom:18px;">' + (p.stock > 0 ? 'In Stock' : 'Out of Stock') + '</p>' +
-      '<div style="display:flex;gap:10px;">' +
-      (p.stock > 0 ? '<button class="btn btn-dark" onclick="Cart.add(' + JSON.stringify(p).replace(/'/g, "&#39;") + ', ' + (p.variants[0] ? JSON.stringify(p.variants[0]).replace(/'/g, "&#39;") : 'null') + ');closeAllOverlays();">Add to Cart</button>' : '<button class="btn btn-ghost" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>') +
-      '<a href="#/product/' + p.slug + '" class="btn btn-ghost" data-link onclick="closeAllOverlays()">View Full Details</a>' +
+    var stk = stockLabel(p);
+    qs('#quickViewBody').innerHTML = '<button class="modal-close" onclick="closeAllOverlays()" aria-label="Close">&times;</button>' +
+      '<div class="qv-grid">' +
+      '<div class="qv-media"><img src="' + escapeHtml(imgSrc(p.images[0])) + '" alt="' + escapeHtml(p.name) + '" onerror="this.src=PLACEHOLDER_IMG"></div>' +
+      '<div class="qv-info">' +
+      (p.primaryCategory ? '<p class="eyebrow">' + escapeHtml(p.primaryCategory) + '</p>' : '') +
+      '<h3 class="name">' + escapeHtml(p.name) + '</h3>' +
+      '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' + (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span><span class="discount">' + disc + '% off</span>' : '') + '</div>' +
+      (p.fabric ? '<p class="qv-meta">Fabric: ' + escapeHtml(p.fabric) + (p.blouseIncluded ? ' &middot; Blouse included' : '') + '</p>' : '') +
+      '<p class="stock-status stock-' + stk.cls + '">' + stk.text + '</p>' +
+      '<div class="qv-actions">' +
+      (p.stock > 0 ? '<button class="btn btn-primary btn-block" onclick="closeAllOverlays();Cart.add(ProductCache[\'' + p.id + '\'], pickVariant(ProductCache[\'' + p.id + '\']));">Add to Bag</button>' : '<button class="btn btn-primary btn-block" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>') +
+      '<a href="#/product/' + p.slug + '" class="btn btn-ghost btn-block" data-link onclick="closeAllOverlays()">View Full Details</a>' +
       '</div></div></div>';
   });
 }
@@ -880,34 +915,34 @@ function openQuickView(slug) {
 function renderCartPage() {
   var el = qs('#cartPageContainer');
   if (!Cart.items.length) {
-    el.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><p>Your bag is empty.</p><a href="#/sarees" class="btn btn-dark" data-link style="margin-top:14px;">Continue Shopping</a></div>';
+    el.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M5 8h14l-1 13H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><h3>Your bag is empty</h3><p>Six yards of possibility are waiting.</p><a href="#/sarees" class="btn btn-primary" data-link>Continue Shopping</a></div>';
     return;
   }
   var lines = Cart.items.map(function (i) {
     var vid = i.variantId ? "'" + i.variantId + "'" : 'null';
     return '<div class="cart-page-line">' +
-      '<img src="' + escapeHtml(imgSrc(i.image)) + '" onerror="this.src=PLACEHOLDER_IMG">' +
-      '<div style="flex:1;">' +
-      '<p class="name" style="font-weight:600;margin:0 0 4px;">' + escapeHtml(i.name) + '</p>' +
-      '<p style="font-size:12px;color:var(--ink-soft);margin:0 0 8px;">' + [i.color, i.size, 'Code: ' + i.sku].filter(Boolean).map(escapeHtml).join(' · ') + '</p>' +
-      '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">' +
-      '<div class="qty-stepper"><button onclick="Cart.setQty(\'' + i.productId + '\',' + vid + ',' + (i.qty - 1) + ')">&minus;</button><span>' + i.qty + '</span><button onclick="Cart.setQty(\'' + i.productId + '\',' + vid + ',' + (i.qty + 1) + ')">+</button></div>' +
+      '<img src="' + escapeHtml(imgSrc(i.image)) + '" alt="" onerror="this.src=PLACEHOLDER_IMG">' +
+      '<div>' +
+      '<p class="name">' + escapeHtml(i.name) + '</p>' +
+      '<p class="meta">' + [i.color, i.size, 'Code ' + i.sku].filter(Boolean).map(escapeHtml).join(' · ') + '</p>' +
+      '<div class="cart-page-controls">' +
+      '<div class="qty-stepper"><button aria-label="Decrease" onclick="Cart.setQty(\'' + i.productId + '\',' + vid + ',' + (i.qty - 1) + ')">&minus;</button><span>' + i.qty + '</span><button aria-label="Increase" onclick="Cart.setQty(\'' + i.productId + '\',' + vid + ',' + (i.qty + 1) + ')">+</button></div>' +
       '<button class="link-btn" onclick="Cart.remove(\'' + i.productId + '\',' + vid + ');renderCartPage();">Remove</button>' +
       '</div></div>' +
-      '<div style="text-align:right;font-weight:700;white-space:nowrap;">' + formatPrice(i.price * i.qty) + '</div>' +
+      '<div class="line-total">' + formatPrice(i.price * i.qty) + '</div>' +
       '</div>';
   }).join('');
   var fee = Cart.deliveryFee();
   el.innerHTML =
     '<div class="cart-page-layout">' +
-    '<div>' + lines + '<a href="#/sarees" class="btn btn-ghost" data-link style="margin-top:18px;">&larr; Continue Shopping</a></div>' +
+    '<div><div class="cart-page-list">' + lines + '</div><p style="margin-top:32px;"><a href="#/sarees" class="link-arrow" data-link>Continue Shopping</a></p></div>' +
     '<aside class="cart-summary">' +
-    '<h3 style="margin:0 0 16px;font-size:16px;">Order Summary</h3>' +
+    '<h3>Order Summary</h3>' +
     '<div class="sum-row"><span>Subtotal (' + Cart.count() + ' item' + (Cart.count() === 1 ? '' : 's') + ')</span><span>' + formatPrice(Cart.subtotal()) + '</span></div>' +
-    '<div class="sum-row"><span>Delivery</span><span>' + (fee === 0 ? 'FREE' : formatPrice(fee)) + '</span></div>' +
-    (fee > 0 ? '<p style="font-size:11.5px;color:var(--ink-soft);margin:2px 0 0;">Free delivery on orders over ' + formatPrice(Cart.FREE_SHIP_OVER) + '.</p>' : '') +
+    '<div class="sum-row"><span>Delivery</span><span>' + (fee === 0 ? 'Complimentary' : formatPrice(fee)) + '</span></div>' +
+    (fee > 0 ? '<p class="sum-note">Complimentary delivery on orders over ' + formatPrice(Cart.FREE_SHIP_OVER) + '.</p>' : '') +
     '<div class="sum-row sum-total"><span>Total</span><span>' + formatPrice(Cart.total()) + '</span></div>' +
-    '<a href="#/checkout" class="btn btn-dark" data-link style="width:100%;justify-content:center;margin-top:16px;">Proceed to Checkout</a>' +
+    '<a href="#/checkout" class="btn btn-primary btn-block" data-link>Proceed to Checkout</a>' +
     '</aside></div>';
 }
 
@@ -915,40 +950,42 @@ function renderCartPage() {
    Checkout (payment intentionally stubbed — see supabase/functions/cashfree-*)
    --------------------------------------------------------- */
 function renderCheckout() {
-  if (!Cart.items.length) { qs('#checkoutContainer').innerHTML = '<div class="empty-state">Your bag is empty. <a href="#/sarees" data-link>Continue shopping</a>.</div>'; return; }
+  if (!Cart.items.length) { qs('#checkoutContainer').innerHTML = '<div class="empty-state"><h3>Your bag is empty</h3><a href="#/sarees" class="btn btn-primary" data-link>Continue Shopping</a></div>'; return; }
   if (!Auth.user) {
-    qs('#checkoutContainer').innerHTML = '<div class="empty-state"><p>Please log in to continue to checkout.</p><button class="btn btn-dark" onclick="Router.pendingAfterLogin=\'/checkout\';openAuthModal(\'login\')">Log In</button></div>';
+    qs('#checkoutContainer').innerHTML = '<div class="empty-state"><h3>Log in to <em>continue</em></h3><p>Sign in to save your address and track this order.</p><button class="btn btn-primary" onclick="Router.pendingAfterLogin=\'/checkout\';openAuthModal(\'login\')">Log In</button></div>';
     return;
   }
   qs('#checkoutContainer').innerHTML =
-    '<form id="checkoutForm">' +
-    '<h3 style="font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--maroon-900);">Contact</h3>' +
-    '<div class="field-row"><div class="field"><label>Full Name</label><input required id="ckName"></div><div class="field"><label>Mobile</label><input required id="ckPhone"></div></div>' +
-    '<div class="field"><label>Email</label><input type="email" id="ckEmail" value="' + escapeHtml(Auth.user.email || '') + '"></div>' +
-    '<h3 style="font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--maroon-900);margin-top:24px;">Shipping Address</h3>' +
-    '<div class="field"><label>House / Flat No.</label><input required id="ckHouse"></div>' +
-    '<div class="field"><label>Street / Area</label><input required id="ckStreet"></div>' +
-    '<div class="field"><label>Landmark (optional)</label><input id="ckLandmark"></div>' +
-    '<div class="field-row"><div class="field"><label>City</label><input required id="ckCity"></div><div class="field"><label>State</label><input required id="ckState"></div></div>' +
-    '<div class="field-row"><div class="field"><label>District</label><input id="ckDistrict"></div><div class="field"><label>PIN Code</label><input required maxlength="6" id="ckPincode"></div></div>' +
-    '<div id="checkoutServiceabilityMsg" style="font-size:13px;margin-bottom:14px;"></div>' +
-    '<h3 style="font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--maroon-900);margin-top:24px;">Order Summary</h3>' +
-    '<div style="background:var(--cream-100);border-radius:var(--radius-sm);padding:16px;margin-bottom:20px;">' +
+    '<form id="checkoutForm" class="checkout-layout">' +
+    '<div>' +
+    '<div class="checkout-step"><h3 class="checkout-step-title"><span>01</span>Contact</h3>' +
+    '<div class="field-row"><div class="field"><label for="ckName">Full Name</label><input required id="ckName" autocomplete="name"></div><div class="field"><label for="ckPhone">Mobile</label><input required id="ckPhone" type="tel" autocomplete="tel"></div></div>' +
+    '<div class="field"><label for="ckEmail">Email</label><input type="email" id="ckEmail" autocomplete="email" value="' + escapeHtml(Auth.user.email || '') + '"></div></div>' +
+    '<div class="checkout-step"><h3 class="checkout-step-title"><span>02</span>Shipping Address</h3>' +
+    '<div class="field-row"><div class="field"><label for="ckHouse">House / Flat No.</label><input required id="ckHouse"></div><div class="field"><label for="ckStreet">Street / Area</label><input required id="ckStreet"></div></div>' +
+    '<div class="field"><label for="ckLandmark">Landmark (optional)</label><input id="ckLandmark"></div>' +
+    '<div class="field-row"><div class="field"><label for="ckCity">City</label><input required id="ckCity"></div><div class="field"><label for="ckState">State</label><input required id="ckState"></div></div>' +
+    '<div class="field-row"><div class="field"><label for="ckDistrict">District</label><input id="ckDistrict"></div><div class="field"><label for="ckPincode">PIN Code</label><input required maxlength="6" inputmode="numeric" id="ckPincode"></div></div>' +
+    '<div id="checkoutServiceabilityMsg" style="font-size:13px;"></div></div>' +
+    '<div class="checkout-step"><h3 class="checkout-step-title"><span>03</span>Payment</h3>' +
+    '<div class="pay-placeholder">Online payment (Cashfree) will appear here once configured. Structure is ready for gateway integration.</div></div>' +
+    '</div>' +
+    '<aside class="cart-summary">' +
+    '<h3>Your Order</h3>' +
+    '<div class="sum-lines">' +
     Cart.items.map(function (i) {
-      return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:8px;">' +
-        '<span>' + escapeHtml(i.name) + (i.color ? ' (' + escapeHtml(i.color) + ')' : '') + ' &times; ' + i.qty + '</span>' +
+      return '<div class="sum-line"><img src="' + escapeHtml(imgSrc(i.image)) + '" alt="" onerror="this.src=PLACEHOLDER_IMG">' +
+        '<span>' + escapeHtml(i.name) + '<small>' + [i.color, 'Qty ' + i.qty].filter(Boolean).map(escapeHtml).join(' · ') + '</small></span>' +
         '<span style="white-space:nowrap;">' + formatPrice(i.price * i.qty) + '</span></div>';
     }).join('') +
-    '<hr style="border:none;border-top:1px solid var(--line);margin:10px 0;">' +
-    '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>Subtotal</span><span>' + formatPrice(Cart.subtotal()) + '</span></div>' +
-    '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>Delivery Charge</span><span>' + (Cart.deliveryFee() === 0 ? 'FREE' : formatPrice(Cart.deliveryFee())) + '</span></div>' +
-    '<div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span>Discount</span><span>&minus; ' + formatPrice(0) + '</span></div>' +
-    '<div style="display:flex;justify-content:space-between;font-weight:700;font-size:15px;border-top:1px solid var(--line);padding-top:8px;margin-top:4px;"><span>Total</span><span>' + formatPrice(Cart.total()) + '</span></div>' +
     '</div>' +
-    '<h3 style="font-size:15px;text-transform:uppercase;letter-spacing:.04em;color:var(--maroon-900);">Payment</h3>' +
-    '<div style="border:1px dashed var(--line);border-radius:var(--radius-sm);padding:14px;margin-bottom:16px;font-size:13px;color:var(--ink-soft);">Online payment (Cashfree) will appear here once configured. Structure is ready for gateway integration.</div>' +
-    '<button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;">Place Order</button>' +
-    '<p style="font-size:11.5px;color:var(--ink-soft);text-align:center;margin-top:10px;">Payment via Cashfree is not yet configured for this store — see supabase/functions/cashfree-*.</p>' +
+    '<div class="sum-row"><span>Subtotal</span><span>' + formatPrice(Cart.subtotal()) + '</span></div>' +
+    '<div class="sum-row"><span>Delivery Charge</span><span>' + (Cart.deliveryFee() === 0 ? 'Complimentary' : formatPrice(Cart.deliveryFee())) + '</span></div>' +
+    '<div class="sum-row"><span>Discount</span><span>&minus; ' + formatPrice(0) + '</span></div>' +
+    '<div class="sum-row sum-total"><span>Total</span><span>' + formatPrice(Cart.total()) + '</span></div>' +
+    '<button class="btn btn-primary btn-block" type="submit">Place Order</button>' +
+    '<p class="fine-print">Payment via Cashfree is not yet configured for this store — see supabase/functions/cashfree-*.</p>' +
+    '</aside>' +
     '</form>';
 
   qs('#ckPincode').addEventListener('blur', function () {
@@ -958,7 +995,7 @@ function renderCheckout() {
     msg.textContent = 'Checking delivery to ' + pin + '…';
     supabaseClient.functions.invoke('check-delivery', { body: { pincode: pin } }).then(function (res) {
       var ok = res.data && res.data.serviceable;
-      msg.innerHTML = ok ? '<span style="color:var(--success);">Delivery available.</span>' : '<span style="color:var(--danger);">This PIN is currently unserviceable. Please use a different address.</span>';
+      msg.innerHTML = ok ? '<span class="msg-ok">Delivery available.</span>' : '<span class="msg-err">This PIN is currently unserviceable. Please use a different address.</span>';
       qs('#checkoutForm button[type=submit]').disabled = !ok;
     }).catch(function () { msg.textContent = ''; });
   });
@@ -980,48 +1017,52 @@ function renderAccount(sub) {
   if (!Auth.user) { qs('#accountContainer').innerHTML = ''; openAuthModal('login'); Router.pendingAfterLogin = '/account'; return; }
   var tabs = [['overview', 'Overview'], ['orders', 'My Orders'], ['addresses', 'Addresses'], ['wishlist', 'Wishlist'], ['profile', 'Profile']];
   sub = sub || 'overview';
-  var nav = tabs.map(function (t) { return '<a href="#/account/' + t[0] + '" data-link class="chip ' + (t[0] === sub ? 'active' : '') + '" style="margin-right:8px;">' + t[1] + '</a>'; }).join('');
-  var body = '<p>Loading&hellip;</p>';
-  qs('#accountContainer').innerHTML = '<h2 class="display">My Account</h2><div style="margin:20px 0 30px;">' + nav + ' <button class="link-btn" onclick="Auth.logout().then(function(){Router.go(\'/\')})">Logout</button></div><div id="accountBody">' + body + '</div>';
+  var nav = tabs.map(function (t) { return '<a href="#/account/' + t[0] + '" data-link class="' + (t[0] === sub ? 'active' : '') + '">' + t[1] + '</a>'; }).join('');
+  var current = tabs.filter(function (t) { return t[0] === sub; })[0] || tabs[0];
+  qs('#accountContainer').innerHTML =
+    '<div class="page-head"><nav class="crumbs"><a href="#/" data-link>Home</a><span>/</span><span>Account</span></nav><h1 class="page-title">My <em>Account</em></h1></div>' +
+    '<div class="account-layout">' +
+    '<nav class="account-nav">' + nav + '<button onclick="Auth.logout().then(function(){Router.go(\'/\')})">Log Out</button></nav>' +
+    '<div><p class="eyebrow">' + current[1] + '</p><div id="accountBody"><p>Loading&hellip;</p></div></div>' +
+    '</div>';
 
   if (sub === 'orders') {
     supabaseClient.from('orders').select('*, order_items(*)').eq('customer_id', Auth.user.id).is('customer_hidden_at', null).order('created_at', { ascending: false }).then(function (res) {
       var orders = res.data || [];
-      qs('#accountBody').innerHTML = orders.length ? orders.map(orderRowHtml).join('') : '<div class="empty-state">No orders yet.</div>';
+      qs('#accountBody').innerHTML = orders.length ? orders.map(orderRowHtml).join('') : '<div class="empty-state" style="text-align:left;padding:24px 0;"><h3>No orders yet</h3><a href="#/sarees" class="link-arrow" data-link>Start shopping</a></div>';
     });
   } else if (sub === 'addresses') {
     supabaseClient.from('addresses').select('*').eq('customer_id', Auth.user.id).then(function (res) {
       var list = res.data || [];
       qs('#accountBody').innerHTML = (list.length ? list.map(function (a) {
-        return '<div class="review-card" style="margin-bottom:12px;"><strong>' + escapeHtml(a.label || 'Address') + '</strong><p style="margin:6px 0 0;font-size:13.5px;color:var(--ink-soft);">' + [a.house, a.street, a.landmark, a.city, a.district, a.state, a.pincode].filter(Boolean).map(escapeHtml).join(', ') + '</p></div>';
-      }).join('') : '<div class="empty-state">No saved addresses yet.</div>');
+        return '<div class="account-card"><strong>' + escapeHtml(a.label || 'Address') + '</strong><p>' + [a.house, a.street, a.landmark, a.city, a.district, a.state, a.pincode].filter(Boolean).map(escapeHtml).join(', ') + '</p></div>';
+      }).join('') : '<div class="empty-state" style="text-align:left;padding:24px 0;"><h3>No saved addresses yet</h3><p>Addresses you use at checkout will appear here.</p></div>');
     });
   } else if (sub === 'wishlist') {
-    Data.getProductsByIds(Wishlist.ids).then(function (products) { renderGridInto('#accountBody', products, 'Your wishlist is empty.'); qs('#accountBody').classList.add('product-grid'); });
+    Data.getProductsByIds(Wishlist.ids).then(function (products) { qs('#accountBody').classList.add('product-grid', 'product-grid-3'); renderGridInto('#accountBody', products, 'Your wishlist is empty.'); });
   } else if (sub === 'profile') {
     supabaseClient.from('customer_profiles').select('*').eq('id', Auth.user.id).maybeSingle().then(function (res) {
       var prof = res.data || {};
-      qs('#accountBody').innerHTML = '<form id="profileForm" style="max-width:420px;">' +
-        '<div class="field"><label>Full Name</label><input id="profName" value="' + escapeHtml(prof.full_name || '') + '"></div>' +
-        '<div class="field"><label>Phone</label><input id="profPhone" value="' + escapeHtml(prof.phone || '') + '"></div>' +
+      qs('#accountBody').innerHTML = '<form id="profileForm" style="max-width:480px;">' +
+        '<div class="field"><label for="profName">Full Name</label><input id="profName" value="' + escapeHtml(prof.full_name || '') + '"></div>' +
+        '<div class="field"><label for="profPhone">Phone</label><input id="profPhone" type="tel" value="' + escapeHtml(prof.phone || '') + '"></div>' +
         '<div class="field"><label>Email</label><input value="' + escapeHtml(Auth.user.email || '') + '" disabled></div>' +
-        '<button class="btn btn-dark" type="submit">Save</button></form>';
+        '<button class="btn btn-primary" type="submit">Save Changes</button></form>';
       qs('#profileForm').addEventListener('submit', function (e) {
         e.preventDefault();
         supabaseClient.from('customer_profiles').upsert({ id: Auth.user.id, full_name: qs('#profName').value, phone: qs('#profPhone').value }).then(function () { toast('Profile updated'); });
       });
     });
   } else {
-    qs('#accountBody').innerHTML = '<p style="color:var(--ink-soft);">Welcome back, ' + escapeHtml(Auth.user.email) + '.</p>';
+    qs('#accountBody').innerHTML = '<p class="account-welcome">Welcome back.</p><p style="color:var(--ink-soft);margin:0 0 28px;">Signed in as ' + escapeHtml(Auth.user.email) + '.</p>' +
+      '<div class="link-list"><a href="#/account/orders" data-link>View orders</a><a href="#/account/addresses" data-link>Saved addresses</a><a href="#/account/wishlist" data-link>Wishlist</a></div>';
   }
 }
 function orderRowHtml(o) {
-  var statusSteps = ['pending', 'confirmed', 'shipped', 'out_for_delivery', 'delivered'];
-  var idx = statusSteps.indexOf(o.status);
-  return '<div class="review-card" style="margin-bottom:14px;">' +
-    '<div style="display:flex;justify-content:space-between;"><strong>#' + escapeHtml(o.order_number) + '</strong><span>' + formatPrice(o.total) + '</span></div>' +
-    '<p style="font-size:12.5px;color:var(--ink-soft);margin:4px 0 12px;">' + new Date(o.created_at).toLocaleDateString() + ' &middot; ' + (o.order_items || []).length + ' item(s)</p>' +
-    '<div style="font-size:12.5px;font-weight:700;color:var(--maroon-900);text-transform:capitalize;">' + o.status.replace(/_/g, ' ') + '</div>' +
+  return '<div class="account-card">' +
+    '<div class="order-head"><strong>#' + escapeHtml(o.order_number) + '</strong><span class="price">' + formatPrice(o.total) + '</span></div>' +
+    '<p>' + new Date(o.created_at).toLocaleDateString() + ' &middot; ' + (o.order_items || []).length + ' item(s)</p>' +
+    '<span class="order-status">' + escapeHtml(o.status.replace(/_/g, ' ')) + '</span>' +
     '</div>';
 }
 
@@ -1040,7 +1081,7 @@ function renderStatic(key) {
   var page = STATIC_PAGES[key];
   if (!page) { Router.notFound(); return; }
   document.title = page.title + ' | Zari';
-  qs('#staticContainer').innerHTML = '<h1 class="display">' + page.title + '</h1><div style="color:var(--ink-soft);line-height:1.8;margin-top:16px;">' + page.body + '</div>';
+  qs('#staticContainer').innerHTML = '<div class="page-head"><nav class="crumbs"><a href="#/" data-link>Home</a><span>/</span><span>' + page.title + '</span></nav><h1 class="page-title">' + page.title + '</h1></div><div class="prose">' + page.body + '</div>';
 }
 
 /* ---------------------------------------------------------
@@ -1059,14 +1100,18 @@ qs('#newsletterForm').addEventListener('submit', function (e) {
    Header icon wiring
    --------------------------------------------------------- */
 qs('#cartBtn').addEventListener('click', function () { Cart.open(); });
-qs('#mobileCartBtn').addEventListener('click', function () { Cart.open(); });
 qs('#closeCartDrawer').addEventListener('click', function () { Cart.close(); });
 qs('#wishlistBtn').addEventListener('click', function () { Router.go('/wishlist'); });
 qs('#accountBtn').addEventListener('click', function () { Auth.user ? Router.go('/account') : openAuthModal('login'); });
 qs('#mobileMenuBtn').addEventListener('click', function () {
-  qs('#mobileNavSheetBody').innerHTML = ['Home:/', 'New Arrivals:/new-arrivals', 'Sarees:/sarees', 'Collections:/collections', 'Occasions:/occasions', 'About:/about', 'Contact:/contact'].map(function (l) {
-    var p = l.split(':'); return '<a href="#' + p[1] + '" data-link class="filter-option" style="font-size:15px;" onclick="closeAllOverlays()">' + p[0] + '</a>';
-  }).join('');
+  qs('#mobileNavSheetBody').innerHTML = '<nav class="mobile-nav-links">' + ['Home:/', 'New Arrivals:/new-arrivals', 'Sarees:/sarees', 'Collections:/collections', 'Occasions:/occasions', 'Offers:/offers', 'Our Story:/about'].map(function (l) {
+    var p = l.split(':'); return '<a href="#' + p[1] + '" data-link onclick="closeAllOverlays()">' + p[0] + '</a>';
+  }).join('') + '</nav>' +
+    '<div class="mobile-nav-sub">' +
+    '<a href="#/wishlist" data-link>Wishlist (' + Wishlist.ids.length + ')</a>' +
+    '<button onclick="closeAllOverlays();' + (Auth.user ? 'Router.go(\'/account\')' : 'openAuthModal(\'login\')') + '">' + (Auth.user ? 'My Account' : 'Log In / Sign Up') + '</button>' +
+    '<a href="#/contact" data-link>Help &amp; Contact</a>' +
+    '</div>';
   openOverlay(); qs('#mobileNavSheet').classList.add('open'); document.body.style.overflow = 'hidden';
 });
 
@@ -1095,6 +1140,10 @@ var Router = {
     var parts = path.split('/').filter(Boolean);
 
     closeAllOverlays();
+    var navKey = parts[0] || 'home';
+    if (navKey === 'sarees' && (query.featured || query.best || query.sale)) navKey = '';
+    qsa('#mainNav a').forEach(function (a) { a.classList.toggle('active', a.getAttribute('data-nav') === navKey); });
+    document.title = 'Zari | Sarees for Every Story'; // PDP / static pages override this
 
     if (path === '/') { this.show('home'); renderHome(); }
     else if (parts[0] === 'sarees' || parts[0] === 'new-arrivals' || parts[0] === 'collections' || parts[0] === 'occasions' || parts[0] === 'offers' || parts[0] === 'search') { this.show('catalog'); renderCatalog(parts[0], query); }
