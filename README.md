@@ -19,6 +19,10 @@ Static HTML/CSS/JS SPA (`index.html`, `style.css`, `script.js`) + Supabase
      no images) so you have real SKUs to fill in rather than starting from zero. See
      "Imported inventory" below.
    - Update `SUPABASE_URL` / `SUPABASE_ANON_KEY` in [`supabase-client.js`](supabase-client.js).
+     Until this is done the storefront runs in **preview mode** ([`demo-data.js`](demo-data.js)):
+     12 clearly-labelled sample products with generated placeholder images and a gold
+     "Preview mode" bar. It switches off automatically once the real URL is set, and any
+     sample items left in a visitor's bag/wishlist are dropped. No sample reviews/orders.
    - Create your admin user, then insert their `auth.users.id` into the `admins` table.
    - **Create two Storage buckets, both set to Public**: `banners` and `products`.
      These back the image-upload UI in Admin → Banners and Admin → Products; until

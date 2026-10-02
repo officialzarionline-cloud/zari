@@ -53,6 +53,17 @@ function cardBuyNow(id) {
   Router.go('/checkout');
 }
 
+// Preview mode (demo-data.js): sample items saved to the bag/wishlist during preview
+// are dropped once the real store is connected, so they never reach checkout.
+var IS_DEMO = typeof DEMO_MODE !== 'undefined' && DEMO_MODE;
+function isStaleDemoId(id) { return !IS_DEMO && String(id || '').indexOf('demo-') === 0; }
+if (IS_DEMO) {
+  var demoBar = document.createElement('div');
+  demoBar.className = 'demo-bar';
+  demoBar.textContent = 'Preview mode — sample products with placeholder images. Real products appear once the store is connected.';
+  document.body.insertBefore(demoBar, document.body.firstChild);
+}
+
 function toast(msg) {
   var el = qs('#toast');
   el.textContent = msg;
@@ -86,7 +97,7 @@ function observeReveal(root) { qsa('.reveal', root).forEach(function (el) { reve
 var Cart = {
   KEY: 'zari_cart_v1',
   items: [],
-  load: function () { try { this.items = JSON.parse(localStorage.getItem(this.KEY)) || []; } catch (e) { this.items = []; } },
+  load: function () { try { this.items = JSON.parse(localStorage.getItem(this.KEY)) || []; } catch (e) { this.items = []; } this.items = this.items.filter(function (i) { return !isStaleDemoId(i.productId); }); },
   persist: function () { try { localStorage.setItem(this.KEY, JSON.stringify(this.items)); } catch (e) {} this.updateBadge(); },
   // opts.silent = don't toast / don't open the drawer (used by Buy Now, which
   // navigates straight to checkout instead).
@@ -178,7 +189,7 @@ Cart.load();
 var Wishlist = {
   KEY: 'zari_wishlist_v1',
   ids: [],
-  load: function () { try { this.ids = JSON.parse(localStorage.getItem(this.KEY)) || []; } catch (e) { this.ids = []; } },
+  load: function () { try { this.ids = JSON.parse(localStorage.getItem(this.KEY)) || []; } catch (e) { this.ids = []; } this.ids = this.ids.filter(function (id) { return !isStaleDemoId(id); }); },
   persist: function () { try { localStorage.setItem(this.KEY, JSON.stringify(this.ids)); } catch (e) {} this.updateBadge(); },
   has: function (id) { return this.ids.indexOf(id) !== -1; },
   toggle: function (id) {
