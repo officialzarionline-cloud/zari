@@ -547,7 +547,8 @@ function productCardHtml(p) {
   var img1 = imgSrc(p.images[0]);
   var img2 = p.images[1] ? p.images[1] : img1;
   var disc = discountPercent(p.price, p.oldPrice);
-  var outOfStock = p.stock <= 0;
+  var priced = p.price > 0;              // no price yet => catalogue-only card (no cart/stock)
+  var outOfStock = priced && p.stock <= 0;
   var stk = stockLabel(p);
   var meta = [p.primaryCategory, p.productType].filter(Boolean).filter(function (v, i, a) { return a.indexOf(v) === i; });
   // Short info line: description first sentence, else fabric/blouse summary.
@@ -570,9 +571,11 @@ function productCardHtml(p) {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21s-7.5-4.7-10-9.3C.5 8 2.3 4 6.3 4c2 0 3.6 1.1 4.7 2.8C12.1 5.1 13.7 4 15.7 4c4 0 5.8 4 4.3 7.7-2.5 4.6-10 9.3-10 9.3z"/></svg></button>' +
     '<div class="quick-actions">' +
     '<button onclick="openQuickView(\'' + p.slug + '\')">Quick View</button>' +
-    (outOfStock
-      ? '<button class="primary" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
-      : '<button class="primary" onclick="cardAddToCart(\'' + p.id + '\')">Add to Bag</button>') +
+    (!priced
+      ? '<a class="primary" href="#/product/' + p.slug + '" data-link>View Details</a>'
+      : outOfStock
+        ? '<button class="primary" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
+        : '<button class="primary" onclick="cardAddToCart(\'' + p.id + '\')">Add to Bag</button>') +
     '</div></div>' +
     '<div class="product-info">' +
     (meta.length ? '<p class="card-meta">' + meta.map(escapeHtml).join(' · ') + '</p>' : '') +
@@ -583,15 +586,17 @@ function productCardHtml(p) {
     '</div>' +
     (shortInfo ? '<p class="card-short">' + escapeHtml(shortInfo) + '</p>' : '') +
     '<div class="card-foot">' +
-    '<p class="stock-status stock-' + stk.cls + '">' + stk.text + '</p>' +
+    (priced ? '<p class="stock-status stock-' + stk.cls + '">' + stk.text + '</p>' : '<p class="stock-status stock-in">Available to order</p>') +
     (p.colors.length > 1 ? '<div class="swatches">' + p.colors.slice(0, 5).map(function (c) { return '<span class="swatch" style="background:' + escapeHtml(c.hex || '#ccc') + '" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div>' : '') +
     '</div>' +
     '<div class="card-actions">' +
-    (outOfStock
-      ? '<button class="link-btn strong" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
-      : '<button class="link-btn strong" onclick="cardAddToCart(\'' + p.id + '\')">Add to Bag</button>' +
-        '<button class="link-btn" onclick="cardBuyNow(\'' + p.id + '\')">Buy Now</button>') +
-    '<a class="link-btn" href="#/product/' + p.slug + '" data-link>Details</a>' +
+    (!priced
+      ? '<a class="link-btn strong" href="#/product/' + p.slug + '" data-link>View Details</a>'
+      : outOfStock
+        ? '<button class="link-btn strong" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
+        : '<button class="link-btn strong" onclick="cardAddToCart(\'' + p.id + '\')">Add to Bag</button>' +
+          '<button class="link-btn" onclick="cardBuyNow(\'' + p.id + '\')">Buy Now</button>') +
+    (priced ? '<a class="link-btn" href="#/product/' + p.slug + '" data-link>Details</a>' : '') +
     '</div>' +
     '</div></div>';
 }
@@ -793,7 +798,8 @@ function renderProductDetail(slug) {
     RecentlyViewed.record(p.id);
     document.title = p.name + ' | Zari';
     var disc = discountPercent(p.price, p.oldPrice);
-    var outOfStock = p.stock <= 0;
+    var priced = p.price > 0;
+    var outOfStock = priced && p.stock <= 0;
     var stk = stockLabel(p);
     var images = p.images.length ? p.images : [PLACEHOLDER_IMG];
 
@@ -821,11 +827,13 @@ function renderProductDetail(slug) {
       ((p.newArrival || p.bestSeller) ? '<div class="pdp-badges">' + (p.newArrival ? '<span class="badge badge-sale">New</span>' : '') + (p.bestSeller ? '<span class="badge badge-best">Best Seller</span>' : '') + '</div>' : '') +
       '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' +
       (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span><span class="discount">' + disc + '% off</span>' : '') + '</div>' +
-      '<p class="pdp-tax">Inclusive of all taxes</p>' +
-      '<div class="pdp-meta-row"><span>Code ' + escapeHtml(p.sku) + '</span><span class="stock-status stock-' + stk.cls + '">' + stk.text + '</span></div>' +
+      (priced ? '<p class="pdp-tax">Inclusive of all taxes</p>' : '') +
+      '<div class="pdp-meta-row"><span>Code ' + escapeHtml(p.sku) + '</span><span class="stock-status stock-' + (priced ? stk.cls : 'in') + '">' + (priced ? stk.text : 'Available to order') + '</span></div>' +
       (p.colors.length ? '<div class="pdp-option"><p class="pdp-option-label">Colour<span>' + escapeHtml(PDPState.activeColor || '') + '</span></p><div class="swatches">' +
         p.colors.map(function (c) { return '<span class="swatch ' + (c.name === PDPState.activeColor ? 'active' : '') + '" style="background:' + escapeHtml(c.hex || '#ccc') + '" onclick="setPdpColor(\'' + escapeHtml(c.name) + '\')" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div></div>' : '') +
-      (outOfStock
+      (!priced
+        ? '<div class="pdp-buy-row"><button class="btn btn-primary" onclick="openNotifyMe(\'' + p.id + '\')">Enquire About This Product</button>' + pdpWishBtn(p) + '</div><p class="pdp-tax">Price and availability will be confirmed by Zari.</p>'
+        : outOfStock
         ? '<div class="pdp-buy-row"><button class="btn btn-primary" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me When Available</button>' + pdpWishBtn(p) + '</div>'
         : '<div class="pdp-buy">' +
           '<div class="qty-stepper qty-stepper-lg"><button type="button" aria-label="Decrease" onclick="pdpSetQty(-1)">&minus;</button><span id="pdpQtyVal">1</span><button type="button" aria-label="Increase" onclick="pdpSetQty(1)">+</button></div>' +
@@ -846,7 +854,9 @@ function renderProductDetail(slug) {
     var stickyCta = qs('#pdpStickyCta');
     stickyCta.classList.add('show');
     stickyCta.innerHTML = '<span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' +
-      (outOfStock ? '<button class="btn btn-primary" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>' : '<button class="btn btn-ghost" onclick="addPdpToCart(true)">Buy Now</button><button class="btn btn-primary" onclick="addPdpToCart()">Add to Bag</button>');
+      (!priced ? '<button class="btn btn-primary" onclick="openNotifyMe(\'' + p.id + '\')">Enquire</button>'
+        : outOfStock ? '<button class="btn btn-primary" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>'
+        : '<button class="btn btn-ghost" onclick="addPdpToCart(true)">Buy Now</button><button class="btn btn-primary" onclick="addPdpToCart()">Add to Bag</button>');
 
     // Related products — prefer same category/fabric, exclude current, in-stock first.
     var simFilters = { limit: 12 };
@@ -903,6 +913,7 @@ function openQuickView(slug) {
     if (!p) return;
     cacheProduct(p);
     var disc = discountPercent(p.price, p.oldPrice);
+    var priced = p.price > 0;
     var stk = stockLabel(p);
     qs('#quickViewBody').innerHTML = '<button class="modal-close" onclick="closeAllOverlays()" aria-label="Close">&times;</button>' +
       '<div class="qv-grid">' +
@@ -912,10 +923,11 @@ function openQuickView(slug) {
       '<h3 class="name">' + escapeHtml(p.name) + '</h3>' +
       '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' + (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span><span class="discount">' + disc + '% off</span>' : '') + '</div>' +
       (p.fabric ? '<p class="qv-meta">Fabric: ' + escapeHtml(p.fabric) + (p.blouseIncluded ? ' &middot; Blouse included' : '') + '</p>' : '') +
-      '<p class="stock-status stock-' + stk.cls + '">' + stk.text + '</p>' +
+      '<p class="qv-meta">Code: ' + escapeHtml(p.sku) + '</p>' +
+      '<p class="stock-status stock-' + (priced ? stk.cls : 'in') + '">' + (priced ? stk.text : 'Available to order') + '</p>' +
       '<div class="qv-actions">' +
-      (p.stock > 0 ? '<button class="btn btn-primary btn-block" onclick="closeAllOverlays();Cart.add(ProductCache[\'' + p.id + '\'], pickVariant(ProductCache[\'' + p.id + '\']));">Add to Bag</button>' : '<button class="btn btn-primary btn-block" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>') +
-      '<a href="#/product/' + p.slug + '" class="btn btn-ghost btn-block" data-link onclick="closeAllOverlays()">View Full Details</a>' +
+      (!priced ? '' : p.stock > 0 ? '<button class="btn btn-primary btn-block" onclick="closeAllOverlays();Cart.add(ProductCache[\'' + p.id + '\'], pickVariant(ProductCache[\'' + p.id + '\']));">Add to Bag</button>' : '<button class="btn btn-primary btn-block" onclick="openNotifyMe(\'' + p.id + '\')">Notify Me</button>') +
+      '<a href="#/product/' + p.slug + '" class="btn ' + (priced ? 'btn-ghost' : 'btn-primary') + ' btn-block" data-link onclick="closeAllOverlays()">View Full Details</a>' +
       '</div></div></div>';
   });
 }
