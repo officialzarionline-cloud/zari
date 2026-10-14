@@ -3,6 +3,10 @@
 // with Zari's own Cashfree webhook secret, and make the handler idempotent
 // (a retried webhook for an already-paid order must be a no-op, not a double
 // stock decrement) — see spec §25/§41.
+// On the first successful payment for an order it must also: decrement
+// product_variants.stock for each order_items row (admin "Cancel order" puts it
+// back), and if orders.coupon_code is set, insert a coupon_redemptions row and
+// increment coupons.used_count — both in the same transaction.
 import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
 
 Deno.serve(async (req) => {

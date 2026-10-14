@@ -1,0 +1,12 @@
+# Security headers for hosts that read this file (Netlify, Cloudflare Pages).
+# On Vercel use the equivalent "headers" config; GitHub Pages can't set headers.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
+
+/admin/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Robots-Tag: noindex, nofollow
+  Cache-Control: no-store

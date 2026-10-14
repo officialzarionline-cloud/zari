@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="same-origin">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; base-uri 'self'; form-action 'self'">
+<title>Zari Admin</title>
+<link rel="icon" href="../assets/favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css?v=1">
+</head>
+<body>
+
+<!-- ============ SIGN-IN SCREENS ============ -->
+<div id="authScreen" class="auth-screen hidden">
+  <div class="auth-art">
+    <img src="../assets/logo.png" alt="Zari">
+    <p>Every saree, every order, every story &mdash; in one place.</p>
+  </div>
+  <div class="auth-panel">
+    <div class="auth-box" id="authBox" aria-live="polite"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="app hidden">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <img src="../assets/logo.png" alt="Zari">
+      <span>Admin</span>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav" aria-label="Admin sections"></nav>
+    <div class="sidebar-foot">
+      <a href="../" target="_blank" rel="noopener">View store &nearr;</a>
+    </div>
+  </aside>
+  <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7h18M3 12h18M3 17h18"/></svg>
+      </button>
+      <div class="topbar-title">
+        <p class="crumb" id="pageCrumb"></p>
+        <h1 id="pageTitle">Dashboard</h1>
+      </div>
+      <div class="topbar-actions" id="topbarActions"></div>
+      <div class="user-menu">
+        <button class="user-btn" id="userBtn" aria-haspopup="true" aria-expanded="false">
+          <span class="avatar" id="userAvatar">Z</span>
+          <span class="user-meta"><strong id="userName"></strong><small id="userRole"></small></span>
+        </button>
+        <div class="user-pop hidden" id="userPop" role="menu">
+          <a href="#/account" role="menuitem">My account &amp; password</a>
+          <button type="button" id="logoutBtn" role="menuitem">Log out</button>
+        </div>
+      </div>
+    </header>
+    <main class="content" id="content" tabindex="-1"></main>
+  </div>
+</div>
+
+<div id="modalRoot"></div>
+<div class="toast-stack" id="toasts" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js" crossorigin="anonymous"></script>
+<script src="../supabase-client.js?v=3"></script>
+<script src="js/core.js?v=1"></script>
+<script src="js/ui.js?v=1"></script>
+<script src="js/auth.js?v=1"></script>
+<script src="js/dashboard.js?v=1"></script>
+<script src="js/products.js?v=1"></script>
+<script src="js/categories.js?v=1"></script>
+<script src="js/homepage.js?v=1"></script>
+<script src="js/marketing.js?v=1"></script>
+<script src="js/coupons.js?v=1"></script>
+<script src="js/orders.js?v=1"></script>
+<script src="js/customers.js?v=1"></script>
+<script src="js/reviews.js?v=1"></script>
+<script src="js/content.js?v=1"></script>
+<script src="js/settings.js?v=1"></script>
+<script src="js/admins.js?v=1"></script>
+<script src="js/activity.js?v=1"></script>
+<script src="js/account.js?v=1"></script>
+<script src="js/app.js?v=1"></script>
+</body>
+</html>

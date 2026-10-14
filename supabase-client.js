@@ -4,16 +4,22 @@
    customer site and admin panel get their Supabase client and agree on how a
    raw Postgres row becomes the product shape the rest of the app expects.
 
-   TODO (before going live): replace SUPABASE_URL / SUPABASE_ANON_KEY below with
-   Zari's own Supabase project values. This is a fresh project — it must NOT
-   point at You & Me's Supabase project. The anon key is meant to be public;
-   every table has RLS (see supabase/migrations/0001_init.sql), so access is
-   controlled by policy, not by this key being secret.
+   Zari's own Supabase project. TODO (before going live): paste the project's
+   anon / publishable key below (Supabase → Project Settings → API). It must NOT
+   point at You & Me's project. The anon key is meant to be public; every table
+   has RLS (see supabase/migrations/), so access is controlled by policy, not by
+   this key being secret. Never put the service-role key in this file.
+   Until the key is set, the storefront runs in preview mode (demo-data.js) and
+   the admin panel shows a "connect the database" screen.
    ========================================================= */
-var SUPABASE_URL = 'https://YOUR-ZARI-PROJECT.supabase.co';
+var SUPABASE_URL = 'https://sjtrbsocepsfmrvgwuei.supabase.co';
 var SUPABASE_ANON_KEY = 'YOUR-ZARI-ANON-KEY';
 
-var supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// The admin panel (/admin) keeps its own login session, separate from shoppers'
+// sessions on the store, so signing in/out of one never affects the other.
+var IS_ADMIN_APP = /\/admin(\/|\/index\.html)?$/.test(location.pathname);
+var supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY,
+  IS_ADMIN_APP ? { auth: { storageKey: 'zari-admin-auth', persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } } : undefined);
 
 var BASE_PATH = '';
 
@@ -49,8 +55,16 @@ function mapSupabaseProduct(row) {
     countryOfOrigin: row.country_of_origin,
     productType: row.product_type,
     hsnCode: row.hsn_code,
-    price: row.sale_price || row.price,
-    oldPrice: row.sale_price ? row.price : null,
+    price: row.sale_price != null && Number(row.sale_price) > 0 ? row.sale_price : row.price,
+    // Struck-through price: the selling price when a discount price is set, or the MRP when it's higher.
+    oldPrice: (function () {
+      var sell = row.sale_price != null && Number(row.sale_price) > 0 ? Number(row.sale_price) : Number(row.price);
+      var was = Math.max(row.sale_price != null && Number(row.sale_price) > 0 ? Number(row.price) : 0, Number(row.mrp || 0));
+      return was > sell ? was : null;
+    })(),
+    mrp: row.mrp,
+    seoTitle: row.seo_title,
+    seoDescription: row.seo_description,
     hasRealPrice: Number(row.price) > 0,
     images: images.map(function (i) { return i.image_url; }),
     imageObjects: images,

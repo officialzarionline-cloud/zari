@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="icon" href="assets/favicon.png" type="image/png">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 
@@ -120,7 +120,7 @@
       </div>
     </div>
 
-    <div class="marquee" aria-hidden="true">
+    <div class="marquee" id="sectionMarquee" aria-hidden="true">
       <div class="marquee-track">
         <span>Handpicked drapes</span><i>&#10022;</i><span>PIN-checked delivery</span><i>&#10022;</i><span>Quality checked</span><i>&#10022;</i><span>Secure payments</span><i>&#10022;</i><span>Customer support</span><i>&#10022;</i>
         <span>Handpicked drapes</span><i>&#10022;</i><span>PIN-checked delivery</span><i>&#10022;</i><span>Quality checked</span><i>&#10022;</i><span>Secure payments</span><i>&#10022;</i><span>Customer support</span><i>&#10022;</i>
@@ -159,6 +159,10 @@
       </div>
     </section>
 
+    <section class="section" id="sectionPromo" style="display:none;">
+      <div class="container promo-grid" id="promoBanners"></div>
+    </section>
+
     <section class="section section-rule" id="sectionShopBy">
       <div class="container duo">
         <div class="duo-col reveal" id="sectionShopByFabric">
@@ -174,7 +178,7 @@
       </div>
     </section>
 
-    <section class="story-band">
+    <section class="story-band" id="sectionStory">
       <div class="container story-inner reveal">
         <p class="eyebrow">Our Story</p>
         <blockquote class="story-quote">&ldquo;A saree is never just fabric &mdash; it&rsquo;s six yards of memory in the making.&rdquo;</blockquote>
@@ -233,7 +237,7 @@
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="sectionNewsletter">
       <div class="container">
         <div class="newsletter reveal">
           <div>
@@ -368,7 +372,8 @@
     <div class="footer-top">
       <div class="footer-brand">
         <img src="assets/logo.png" alt="Zari" onerror="this.style.display='none'">
-        <p>Handpicked sarees for the everyday and the unforgettable.</p>
+        <p id="footerTagline">Handpicked sarees for the everyday and the unforgettable.</p>
+        <div class="footer-social" id="footerSocial"></div>
       </div>
       <div class="footer-grid">
         <div>
@@ -383,6 +388,7 @@
           <h5>Help</h5>
           <a href="#/contact" data-link>Contact</a>
           <a href="#/shipping-info" data-link>Shipping</a>
+          <a href="#/returns" data-link>Returns &amp; Refunds</a>
           <a href="#/faq" data-link>FAQ</a>
         </div>
         <div>
@@ -395,7 +401,7 @@
     </div>
     <div class="footer-bottom">
       <span>&copy; <span id="footerYear"></span> Zari. All rights reserved.</span>
-      <span>Made with care in India</span>
+      <span id="footerNote">Made with care in India</span>
     </div>
   </div>
 </footer>
@@ -435,8 +441,8 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="supabase-client.js"></script>
-<script src="demo-data.js?v=1"></script>
-<script src="script.js?v=3"></script>
+<script src="supabase-client.js?v=3"></script>
+<script src="demo-data.js?v=2"></script>
+<script src="script.js?v=4"></script>
 </body>
 </html>

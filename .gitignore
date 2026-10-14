@@ -2,3 +2,5 @@
 node_modules/
 .env
 supabase/.temp/
+supabase/tests/local/storage_files/
+__pycache__/

@@ -1,14 +1,15 @@
 /* =========================================================
    Zari — preview/demo mode.
-   Active ONLY while supabase-client.js still has the placeholder project URL.
+   Active ONLY while supabase-client.js still has the placeholder anon key.
    Serves clearly-labelled sample products + categories (with generated
    placeholder artwork) so the storefront layout can be reviewed before the
    real Supabase project exists. Everything else (reviews, banners, orders,
    auth, newsletter…) still goes to the real client — no invented reviews or
-   order data. Once SUPABASE_URL is set to the real project this file is inert.
+   order data. Once the real anon key is set this file is inert.
    Loaded after supabase-client.js and before script.js (storefront only).
    ========================================================= */
-var DEMO_MODE = /YOUR-ZARI-PROJECT/.test(SUPABASE_URL);
+// Preview mode while the project's anon key hasn't been pasted into supabase-client.js yet.
+var DEMO_MODE = /YOUR-ZARI/.test(SUPABASE_ANON_KEY) || /YOUR-ZARI/.test(SUPABASE_URL);
 var DEMO_ID_PREFIX = 'demo-';
 
 (function () {

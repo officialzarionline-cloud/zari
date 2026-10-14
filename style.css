@@ -612,3 +612,25 @@ footer.site-footer { background: var(--maroon-950); color: var(--cream-300); pad
 @keyframes viewIn { from { opacity: 0; } to { opacity: 1; } }
 .text-center { text-align: center; }
 .mt-0 { margin-top: 0; }
+
+/* ---------- Admin-managed pieces (homepage sections, promos, footer links) ---------- */
+.admin-hidden { display: none !important; }
+.utility-msg a { color: inherit; border-bottom: 1px solid var(--gold-500); }
+.promo-grid { display: grid; gap: 32px; }
+.promo-card { display: grid; grid-template-columns: 1.15fr 1fr; background: var(--cream-100); min-height: 380px; }
+.promo-card-flip .promo-media { order: 2; }
+.promo-media { display: block; overflow: hidden; background: var(--cream-200); }
+.promo-media img { width: 100%; height: 100%; object-fit: cover; transition: transform 1.2s var(--ease); }
+.promo-card:hover .promo-media img { transform: scale(1.03); }
+.promo-copy { padding: 56px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; }
+.promo-copy .section-copy { margin: 18px 0 28px; }
+@media (max-width: 900px) { .promo-card { grid-template-columns: 1fr; min-height: 0; } .promo-card-flip .promo-media { order: 0; } .promo-media { aspect-ratio: 16/10; } .promo-copy { padding: 32px 24px 40px; } }
+.footer-social { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 24px; }
+.footer-social a { font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--gold-300); }
+.footer-social a:hover { color: var(--cream-50); }
+.coupon-row { display: flex; gap: 8px; margin: 4px 0 6px; }
+.coupon-row input { flex: 1; min-width: 0; border: none; border-bottom: 1px solid var(--line); background: transparent; padding: 8px 0; font-size: 14px; text-transform: uppercase; letter-spacing: .08em; }
+.coupon-row input:focus { outline: none; border-color: var(--maroon-900); }
+.prose h2 { font-size: 30px; font-weight: 400; margin: 36px 0 12px; }
+.prose ul { padding-left: 20px; }
+.prose a { color: var(--maroon-700); border-bottom: 1px solid var(--line); }

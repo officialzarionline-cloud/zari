@@ -133,7 +133,7 @@ var Cart = {
   // store's stated rules (announcement bar: free over ₹2,999), not invented per-order.
   FREE_SHIP_OVER: 2999,
   FLAT_SHIP: 79,
-  deliveryFee: function () { return this.subtotal() >= this.FREE_SHIP_OVER || this.subtotal() === 0 ? 0 : this.FLAT_SHIP; },
+  deliveryFee: function () { var s = this.subtotal(); return s === 0 || (this.FREE_SHIP_OVER > 0 && s >= this.FREE_SHIP_OVER) ? 0 : this.FLAT_SHIP; },
   total: function () { return this.subtotal() + this.deliveryFee(); },
   updateBadge: function () {
     var n = this.count();
@@ -169,7 +169,7 @@ var Cart = {
     }).join('');
     var fee = this.deliveryFee();
     footer.innerHTML = '<div class="drawer-total"><span>Subtotal</span><strong>' + formatPrice(this.subtotal()) + '</strong></div>' +
-      '<p class="drawer-note">' + (fee === 0 ? 'Complimentary delivery on this order.' : 'Add ' + formatPrice(this.FREE_SHIP_OVER - this.subtotal()) + ' more for complimentary delivery.') + '</p>' +
+      '<p class="drawer-note">' + (fee === 0 ? 'Complimentary delivery on this order.' : this.FREE_SHIP_OVER > 0 ? 'Add ' + formatPrice(this.FREE_SHIP_OVER - this.subtotal()) + ' more for complimentary delivery.' : 'Delivery: ' + formatPrice(fee) + '.') + '</p>' +
       '<a href="#/checkout" class="btn btn-primary btn-block" data-link onclick="Cart.close()">Checkout</a>' +
       '<a href="#/cart" class="btn btn-ghost btn-block" data-link onclick="Cart.close()">View Bag</a>';
   },
@@ -233,7 +233,7 @@ var Auth = {
     supabaseClient.auth.onAuthStateChange(function (event, session) { Auth.user = session ? session.user : null; Auth.onChange(); });
   },
   onChange: function () {
-    if (Auth.user) Wishlist.mergeFromServer();
+    if (Auth.user) Auth.mergeFromServer();
   },
   mergeFromServer: function () {
     supabaseClient.from('wishlist_items').select('product_id').eq('customer_id', Auth.user.id).then(function (res) {
@@ -455,9 +455,33 @@ var Data = {
     var p = this.categoriesCache ? Promise.resolve(this.categoriesCache) : supabaseClient.from('categories').select('*').order('sort_order').then(function (res) { self.categoriesCache = res.data || []; return self.categoriesCache; }).catch(function () { return []; });
     return p.then(function (all) { return kind ? all.filter(function (c) { return c.kind === kind; }) : all; });
   },
+  // Product ids in a category (by slug), including its subcategories. Filtering on an
+  // embedded column doesn't narrow the parent rows in PostgREST, so resolve ids first.
+  productIdsInCategory: function (slug) {
+    return Data.getCategories().then(function (all) {
+      var root = all.filter(function (c) { return c.slug === slug; })[0];
+      if (!root) return null;
+      var ids = [root.id];
+      (function add(pid) { all.forEach(function (c) { if (c.parent_id === pid) { ids.push(c.id); add(c.id); } }); })(root.id);
+      return supabaseClient.from('product_categories').select('product_id').in('category_id', ids).then(function (r) {
+        return { category: root, ids: Array.from(new Set((r.data || []).map(function (x) { return x.product_id; }))) };
+      });
+    });
+  },
   listProducts: function (filters) {
     filters = filters || {};
+    // Category / fabric / occasion pages: resolve to product ids via the category tree.
+    var slugFilter = filters.categorySlug || filters.fabric || filters.occasion;
+    if (slugFilter && !IS_DEMO && !filters._resolved) {
+      return Data.productIdsInCategory(slugFilter).then(function (res) {
+        var rest = Object.assign({}, filters, { categorySlug: null, _resolved: true });
+        if (res) { rest.fabric = null; rest.occasion = null; rest.ids = res.ids.length ? res.ids : ['00000000-0000-0000-0000-000000000000']; rest.category = res.category; }
+        else if (filters.categorySlug) return { products: [], count: 0, error: null };
+        return Data.listProducts(rest).then(function (r) { r.category = rest.category || null; return r; });
+      }).catch(function (err) { return { products: [], count: 0, error: err }; });
+    }
     var query = supabaseClient.from('products').select(PRODUCT_SELECT, { count: 'exact' }).eq('status', 'active');
+    if (filters.ids) query = query.in('id', filters.ids);
     if (filters.categorySlug) query = query.eq('product_categories.categories.slug', filters.categorySlug);
     if (filters.featured) query = query.eq('featured', true);
     if (filters.newArrival) query = query.eq('new_arrival', true);
@@ -469,8 +493,9 @@ var Data = {
     if (filters.minPrice) query = query.gte('price', filters.minPrice);
     if (filters.maxPrice) query = query.lte('price', filters.maxPrice);
     if (filters.search) {
-      var t = filters.search.replace(/[%]/g, '');
-      query = query.or(['name.ilike.%' + t + '%', 'sku.ilike.%' + t + '%', 'fabric.ilike.%' + t + '%', 'occasion.ilike.%' + t + '%', 'weave.ilike.%' + t + '%', 'description.ilike.%' + t + '%'].join(','));
+      // Strip characters that have meaning in PostgREST filter syntax.
+      var t = String(filters.search).replace(/[,()*%\\:"']/g, ' ').trim().slice(0, 80);
+      if (t) query = query.or(['name.ilike.*' + t + '*', 'sku.ilike.*' + t + '*', 'fabric.ilike.*' + t + '*', 'occasion.ilike.*' + t + '*', 'weave.ilike.*' + t + '*', 'description.ilike.*' + t + '*'].join(','));
     }
     if (filters.sort === 'price-asc') query = query.order('price', { ascending: true });
     else if (filters.sort === 'price-desc') query = query.order('price', { ascending: false });
@@ -502,8 +527,8 @@ var Data = {
   // Banners already come back RLS-filtered to "enabled and within schedule" for a
   // non-admin session (see supabase/migrations/0002_banners_and_product_flags.sql),
   // so no date-window filtering needs to happen here.
-  getActiveBanners: function () {
-    return supabaseClient.from('banners').select('*').order('priority', { ascending: false })
+  getActiveBanners: function (placement) {
+    return supabaseClient.from('banners').select('*').eq('placement', placement || 'hero').order('priority', { ascending: false }).order('created_at', { ascending: false })
       .then(function (res) { return res.data || []; })
       .catch(function () { return []; });
   },
@@ -523,12 +548,11 @@ var Data = {
       .then(function (res) {
         var flagged = (res.data || []).map(mapSupabaseProduct);
         if (flagged.length) return { products: flagged, error: res.error };
-        return supabaseClient.from('order_items').select('product_id, qty, orders!inner(payment_status)').eq('orders.payment_status', 'paid')
+        // Order lines are private, so the ranking by paid quantity is computed in the database.
+        return supabaseClient.rpc('public_best_seller_ids', { p_limit: limit })
           .then(function (r2) {
-            if (r2.error || !r2.data || !r2.data.length) return { products: [], error: r2.error };
-            var totals = {};
-            r2.data.forEach(function (row) { totals[row.product_id] = (totals[row.product_id] || 0) + row.qty; });
-            var rankedIds = Object.keys(totals).sort(function (a, b) { return totals[b] - totals[a]; }).slice(0, limit);
+            if (r2.error || !r2.data || !r2.data.length) return { products: [], error: null };
+            var rankedIds = r2.data.map(function (x) { return typeof x === 'string' ? x : x.public_best_seller_ids || x.id; });
             return Data.getProductsByIds(rankedIds).then(function (products) {
               products.sort(function (a, b) { return rankedIds.indexOf(a.id) - rankedIds.indexOf(b.id); });
               return { products: products, error: null };
@@ -538,6 +562,162 @@ var Data = {
       .catch(function (err) { return { products: [], error: err }; });
   }
 };
+
+/* ---------------------------------------------------------
+   Website settings, homepage layout and content pages — all managed in /admin
+   and read live from the database on every page load (no code changes needed).
+   Anything missing falls back to what the page already shows.
+   --------------------------------------------------------- */
+// Links typed into the admin may only be store pages (#/...) or http(s) URLs.
+function safeLink(u, fallback) {
+  u = String(u == null ? '' : u).trim();
+  return /^#\//.test(u) || /^https?:\/\/[^\s"'<>]+$/i.test(u) ? u : (fallback || '#/');
+}
+function linkAttrs(u) { return /^#\//.test(u) ? 'data-link' : 'target="_blank" rel="noopener noreferrer"'; }
+// "New *Arrivals*" → New <em>Arrivals</em> (text is escaped first).
+function titleHtml(t) { return escapeHtml(t).replace(/\*([^*]+)\*/g, '<em>$1</em>'); }
+// Same plain-text rules as the admin editor: paragraphs, ## headings, - bullets,
+// **bold**, [text](https://… | #/… | mailto:…). Everything else is escaped.
+function richText(src) {
+  function inline(x) {
+    return escapeHtml(x).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|#\/[^\s)]*|mailto:[^\s)]+)\)/g, function (m, t, u) { return '<a href="' + u + '"' + (/^#\//.test(u) ? ' data-link' : /^https?:/.test(u) ? ' target="_blank" rel="noopener noreferrer"' : '') + '>' + t + '</a>'; });
+  }
+  return String(src || '').split(/\n{2,}/).map(function (block) {
+    block = block.trim();
+    if (!block) return '';
+    if (/^##\s+/.test(block)) return '<h2>' + inline(block.replace(/^##\s+/, '')) + '</h2>';
+    var lines = block.split('\n');
+    if (lines.every(function (l) { return /^\s*[-•]\s+/.test(l); })) return '<ul>' + lines.map(function (l) { return '<li>' + inline(l.replace(/^\s*[-•]\s+/, '')) + '</li>'; }).join('') + '</ul>';
+    return '<p>' + lines.map(inline).join('<br>') + '</p>';
+  }).join('');
+}
+
+var Site = {
+  settings: {}, sections: {}, sectionOrder: [], pages: {}, ready: null, loadedAt: 0,
+  load: function () {
+    Site.loadedAt = Date.now();
+    Site.ready = Promise.all([
+      supabaseClient.from('site_settings').select('key,value').then(function (r) { return r.data || []; }, function () { return []; }),
+      supabaseClient.from('homepage_sections').select('*').order('sort_order').then(function (r) { return r.data || []; }, function () { return []; })
+    ]).then(function (r) {
+      Site.settings = {};
+      r[0].forEach(function (row) { Site.settings[row.key] = row.value || {}; });
+      Site.sections = {}; Site.sectionOrder = [];
+      r[1].forEach(function (sec) { Site.sections[sec.key] = sec; Site.sectionOrder.push(sec.key); });
+      Site.apply();
+    }).catch(function () {});
+    return Site.ready;
+  },
+  get: function (key) { return Site.settings[key] || {}; },
+  storeName: function () { return Site.get('store').name || 'Zari'; },
+  apply: function () {
+    var store = Site.get('store'), ship = Site.get('shipping'), ann = Site.settings.announcement, foot = Site.get('footer'), social = Site.get('social'), seo = Site.get('seo');
+    // Delivery rules shown in the bag (checkout re-prices on the server with the same settings).
+    if (ship.free_shipping_over != null && isFinite(Number(ship.free_shipping_over))) Cart.FREE_SHIP_OVER = Number(ship.free_shipping_over);
+    if (ship.flat_fee != null && isFinite(Number(ship.flat_fee))) Cart.FLAT_SHIP = Number(ship.flat_fee);
+    Cart.updateBadge();
+    // Announcement bar
+    var bar = qs('#announcementBar');
+    if (bar && ann) {
+      bar.classList.toggle('hidden', ann.enabled === false || !ann.text);
+      var link = ann.link ? safeLink(ann.link, '') : '';
+      bar.innerHTML = link ? '<a href="' + escapeHtml(link) + '" ' + linkAttrs(link) + '>' + escapeHtml(ann.text || '') + '</a>' : escapeHtml(ann.text || '');
+    }
+    // Footer
+    if (foot.tagline && qs('#footerTagline')) qs('#footerTagline').textContent = foot.tagline;
+    if (foot.bottom_note && qs('#footerNote')) qs('#footerNote').textContent = foot.bottom_note;
+    var soc = ['instagram', 'facebook', 'youtube', 'pinterest'].filter(function (k) { return social[k] && /^https?:\/\//i.test(social[k]); });
+    if (qs('#footerSocial')) qs('#footerSocial').innerHTML = soc.map(function (k) { return '<a href="' + escapeHtml(safeLink(social[k])) + '" target="_blank" rel="noopener noreferrer">' + k.charAt(0).toUpperCase() + k.slice(1) + '</a>'; }).join('');
+    // Branding
+    if (store.logo_url && /^https?:\/\//i.test(store.logo_url)) qsa('img[src$="assets/logo.png"]').forEach(function (img) { img.src = store.logo_url; });
+    if (store.favicon_url && /^https?:\/\//i.test(store.favicon_url)) { var fav = qs('link[rel="icon"]'); if (fav) fav.href = store.favicon_url; }
+    if (seo.meta_description) { var md = qs('meta[name="description"]'); if (md) md.setAttribute('content', seo.meta_description); }
+    if (location.hash.replace(/^#\/?/, '') === '') document.title = seo.meta_title || (Site.storeName() + ' | ' + (store.tagline || 'Sarees for Every Story'));
+  },
+  pageTitle: function (t) { return t + ' | ' + Site.storeName(); },
+  // Content pages, cached for this page load.
+  page: function (slug) {
+    if (Site.pages[slug]) return Promise.resolve(Site.pages[slug]);
+    return supabaseClient.from('content_pages').select('*').eq('slug', slug).eq('is_published', true).maybeSingle()
+      .then(function (r) { if (r.data) Site.pages[slug] = r.data; return r.data || null; }, function () { return null; });
+  }
+};
+Site.load();
+// Pick up admin changes when the shopper comes back to the tab after a while.
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible' && Date.now() - Site.loadedAt > 60000) {
+    Data.categoriesCache = null; Site.pages = {};
+    Site.load().then(function () { if (location.hash.replace(/^#\/?/, '') === '') Router.handle(); });
+  }
+});
+
+// Homepage: section order, visibility and copy from homepage_sections.
+var HOME_SECTION_EL = {
+  hero: '#homeHero', marquee: '#sectionMarquee', new_arrivals: '#sectionNewArrivals', shop_by_type: '#sectionShopByType',
+  featured: '#sectionFeaturedCollection', promo: '#sectionPromo', shop_by: '#sectionShopBy', story: '#sectionStory',
+  best_sellers: '#sectionBestSellers', offers: '#sectionOfferProducts', campaign: '#sectionCampaign', more_styles: '#sectionMoreStyles',
+  reviews: '#sectionReviews', newsletter: '#sectionNewsletter'
+};
+function sectionLimit(key, fallback) {
+  var c = (Site.sections[key] || {}).config || {};
+  var n = Number(c.limit);
+  return n >= 4 && n <= 24 ? Math.round(n) : fallback;
+}
+function heroDefaultHtml() {
+  var h = Site.sections.hero, c = (h && h.config) || {};
+  if (!h) return null;
+  var cta = safeLink(c.cta_link, '#/sarees'), sec = c.secondary_link ? safeLink(c.secondary_link, '') : '';
+  return (h.eyebrow ? '<p class="eyebrow">' + escapeHtml(h.eyebrow) + '</p>' : '') +
+    '<h1 class="hero-title">' + titleHtml(h.title || 'Sarees woven for *every story*') + '</h1>' +
+    (h.subtitle ? '<p class="hero-lede">' + escapeHtml(h.subtitle) + '</p>' : '') +
+    '<div class="hero-actions"><a href="' + escapeHtml(cta) + '" class="btn btn-primary" ' + linkAttrs(cta) + '>' + escapeHtml(c.cta_text || 'Shop Sarees') + '</a>' +
+    (sec && c.secondary_text ? '<a href="' + escapeHtml(sec) + '" class="link-arrow" ' + linkAttrs(sec) + '>' + escapeHtml(c.secondary_text) + '</a>' : '') + '</div>';
+}
+function applyHomeSections() {
+  if (!Site.sectionOrder.length) return;
+  var home = qs('#view-home');
+  var tail = qs('#sectionCompleteLook');
+  Site.sectionOrder.forEach(function (key) {
+    var sec = Site.sections[key], el = qs(HOME_SECTION_EL[key] || '#none');
+    if (!el) return;
+    home.insertBefore(el, tail);
+    el.classList.toggle('admin-hidden', !sec.is_visible);
+    var head = el.querySelector('.section-head, .weave-intro, .story-inner, .newsletter > div:first-child');
+    if (head && key !== 'hero') {
+      var eb = head.querySelector('.eyebrow'), tt = head.querySelector('.section-title, .story-quote'), sub = head.querySelector('.section-copy, .story-copy');
+      if (eb && sec.eyebrow != null) eb.textContent = sec.eyebrow;
+      if (tt && sec.title) tt.innerHTML = key === 'story' ? escapeHtml(sec.title) : titleHtml(sec.title);
+      if (sub && sec.subtitle != null) sub.textContent = sec.subtitle;
+    }
+    var c = sec.config || {};
+    if (key === 'story' && c.link) { var a = el.querySelector('.link-arrow'); if (a) { var l = safeLink(c.link, '#/about'); a.setAttribute('href', l); a.textContent = c.link_text || a.textContent; } }
+    if (key === 'marquee' && Array.isArray(c.items) && c.items.length) {
+      var once = c.items.map(function (t) { return '<span>' + escapeHtml(t) + '</span><i>&#10022;</i>'; }).join('');
+      el.querySelector('.marquee-track').innerHTML = once + once;
+    }
+  });
+  var hero = heroDefaultHtml();
+  if (hero) HeroBanner.defaultHtml = hero;
+}
+
+// Promotional banners (placement = promo), shown as editorial blocks on the homepage.
+function renderPromoBanners() {
+  Data.getActiveBanners('promo').then(function (rows) {
+    var sec = qs('#sectionPromo');
+    if (!sec) return;
+    sec.style.display = rows.length ? '' : 'none';
+    qs('#promoBanners').innerHTML = rows.map(function (b, i) {
+      var link = safeLink(b.cta_link, '#/sarees');
+      return '<div class="promo-card' + (i % 2 ? ' promo-card-flip' : '') + ' reveal">' +
+        '<a class="promo-media" href="' + escapeHtml(link) + '" ' + linkAttrs(link) + '><img src="' + escapeHtml(b.image_url) + '" alt="' + escapeHtml(b.title) + '" loading="lazy"></a>' +
+        '<div class="promo-copy">' + (b.offer_text ? '<span class="hero-offer-badge">' + escapeHtml(b.offer_text) + '</span>' : '') +
+        '<h2 class="section-title">' + titleHtml(b.title) + '</h2>' + (b.subtitle ? '<p class="section-copy">' + escapeHtml(b.subtitle) + '</p>' : '') +
+        '<a href="' + escapeHtml(link) + '" class="link-arrow" ' + linkAttrs(link) + '>' + escapeHtml(b.cta_text || 'Shop now') + '</a></div></div>';
+    }).join('');
+    observeReveal(sec);
+  });
+}
 
 /* ---------------------------------------------------------
    Product card / grid rendering
@@ -649,7 +829,7 @@ var HeroBanner = {
       '<h1 class="hero-title">' + escapeHtml(b.title) + '</h1>' +
       (b.subtitle ? '<p class="hero-lede">' + escapeHtml(b.subtitle) + '</p>' : '') +
       '<div class="hero-actions">' +
-      '<a href="' + escapeHtml(b.cta_link || '#/sarees') + '" class="btn btn-primary" ' + (String(b.cta_link || '').indexOf('#/') === 0 ? 'data-link' : 'target="_blank" rel="noopener"') + '>' + escapeHtml(b.cta_text || 'Shop Now') + '</a>' +
+      '<a href="' + escapeHtml(safeLink(b.cta_link, '#/sarees')) + '" class="btn btn-primary" ' + linkAttrs(safeLink(b.cta_link, '#/sarees')) + '>' + escapeHtml(b.cta_text || 'Shop Now') + '</a>' +
       '<a href="#/sarees" class="link-arrow" data-link>All Sarees</a>' +
       '</div>';
     qs('#heroDots').innerHTML = this.banners.length > 1 ? this.banners.map(function (bn, i) {
@@ -665,9 +845,13 @@ function renderHome() {
   renderSkeletonGrid('#newArrivalsGrid', 4);
   renderSkeletonGrid('#featuredGrid', 5);
   renderSkeletonGrid('#moreStylesGrid', 4);
-  HeroBanner.load();
+  // Section order / visibility / copy come from the admin; hero waits for them so the
+  // default hero text shown when no banner is live is the admin's text.
+  (Site.ready || Promise.resolve()).then(function () { applyHomeSections(); HeroBanner.load(); renderHomeRails(); });
+  renderPromoBanners();
 
   Data.getCategories('saree_type').then(function (cats) {
+    cats = cats.filter(function (c) { return !c.parent_id; }); // subcategories live on the category page filters
     document.getElementById('sectionShopByType').style.display = cats.length ? '' : 'none';
     qs('#shopByTypeList').innerHTML = cats.map(function (c, i) {
       return '<a href="#/sarees?type=' + c.slug + '" class="weave-row" data-link>' +
@@ -685,28 +869,14 @@ function renderHome() {
     qs('#shopByOccasionList').innerHTML = r[1].map(function (c) { return '<a href="#/sarees?occasion=' + c.slug + '" data-link>' + escapeHtml(c.name) + '</a>'; }).join('');
   });
 
-  Data.listProducts({ newArrival: true, limit: 8 }).then(function (r) { renderGridInto('#newArrivalsGrid', r.products, 'New arrivals will appear here soon.', !!r.error); });
-  // Featured grid leads with one large card (2x2) + four regular — 5 fills the layout cleanly.
-  Data.listProducts({ featured: true, limit: 5 }).then(function (r) {
-    document.getElementById('sectionFeaturedCollection').style.display = (r.products.length || r.error) ? '' : 'none';
-    renderGridInto('#featuredGrid', r.products, 'Featured picks are on the way.', !!r.error);
-  });
-  Data.listProducts({ limit: 8 }).then(function (r) { renderGridInto('#moreStylesGrid', r.products, 'Our collection is on its way.', !!r.error); });
-
-  Data.getBestSellers(8).then(function (r) {
-    document.getElementById('sectionBestSellers').style.display = (r.products.length || r.error) ? '' : 'none';
-    renderGridInto('#bestSellersGrid', r.products, '', !!r.error);
-  });
-  Data.listOnSale(8).then(function (r) {
-    document.getElementById('sectionOfferProducts').style.display = (r.products.length || r.error) ? '' : 'none';
-    renderGridInto('#offerProductsGrid', r.products, '', !!r.error);
-  });
-
   Data.getLiveCampaign().then(function (c) {
     var section = document.getElementById('sectionCampaign');
     if (!c) { section.style.display = 'none'; return; }
     section.style.display = '';
-    qs('#campaignBanner').innerHTML = '<div class="campaign"><p class="eyebrow">Live Now</p><h2>' + escapeHtml(c.name) + '</h2><a href="#/offers" class="link-arrow link-arrow-light" data-link>Shop the offer</a></div>';
+    var bc = c.banner_config || {}, link = safeLink(bc.link, '#/offers');
+    qs('#campaignBanner').innerHTML = '<div class="campaign"><p class="eyebrow">Live Now</p><h2>' + escapeHtml(c.name) + '</h2>' +
+      (bc.text ? '<p class="story-copy" style="margin:-12px auto 28px;">' + escapeHtml(bc.text) + '</p>' : '') +
+      '<a href="' + escapeHtml(link) + '" class="link-arrow link-arrow-light" ' + linkAttrs(link) + '>' + escapeHtml(bc.link_text || 'Shop the offer') + '</a></div>';
   });
 
   Data.getApprovedReviews(3).then(function (reviews) {
@@ -718,6 +888,24 @@ function renderHome() {
   });
 
   observeReveal(document);
+}
+
+function renderHomeRails() {
+  Data.listProducts({ newArrival: true, limit: sectionLimit('new_arrivals', 8) }).then(function (r) { renderGridInto('#newArrivalsGrid', r.products, 'New arrivals will appear here soon.', !!r.error); });
+  // Featured grid leads with one large card (2x2) + four regular — 5 fills the layout cleanly.
+  Data.listProducts({ featured: true, limit: 5 }).then(function (r) {
+    document.getElementById('sectionFeaturedCollection').style.display = (r.products.length || r.error) ? '' : 'none';
+    renderGridInto('#featuredGrid', r.products, 'Featured picks are on the way.', !!r.error);
+  });
+  Data.listProducts({ limit: sectionLimit('more_styles', 8) }).then(function (r) { renderGridInto('#moreStylesGrid', r.products, 'Our collection is on its way.', !!r.error); });
+  Data.getBestSellers(sectionLimit('best_sellers', 8)).then(function (r) {
+    document.getElementById('sectionBestSellers').style.display = (r.products.length || r.error) ? '' : 'none';
+    renderGridInto('#bestSellersGrid', r.products, '', !!r.error);
+  });
+  Data.listOnSale(sectionLimit('offers', 8)).then(function (r) {
+    document.getElementById('sectionOfferProducts').style.display = (r.products.length || r.error) ? '' : 'none';
+    renderGridInto('#offerProductsGrid', r.products, '', !!r.error);
+  });
 }
 
 /* ---------------------------------------------------------
@@ -745,6 +933,7 @@ function renderCatalog(routeParams, query) {
   renderFilterSidebar(query);
 
   Data.listProducts(filters).then(function (r) {
+    if (r.category) { qs('#catalogTitle').textContent = r.category.name; qs('#catalogCrumb').textContent = r.category.name; document.title = Site.pageTitle(r.category.name); }
     renderGridInto('#catalogGrid', r.products, 'No products match yet.', !!r.error);
     qs('#catalogCount').textContent = r.count ? (r.count + ' piece' + (r.count === 1 ? '' : 's')) : '';
   });
@@ -768,9 +957,15 @@ function renderFilterSidebar(query) {
 }
 function filterGroupHtml(label, cats, param, query) {
   if (!cats.length) return '';
-  return '<div class="filter-group"><h4>' + label + '</h4>' + cats.map(function (c) {
+  // Parents first, each followed by its subcategories (indented).
+  var ordered = [], depth = {};
+  (function walk(pid, d) {
+    cats.filter(function (c) { return (c.parent_id || null) === pid; }).forEach(function (c) { depth[c.id] = d; ordered.push(c); walk(c.id, d + 1); });
+  })(null, 0);
+  cats.forEach(function (c) { if (ordered.indexOf(c) === -1) { depth[c.id] = 0; ordered.push(c); } });
+  return '<div class="filter-group"><h4>' + label + '</h4>' + ordered.map(function (c) {
     var on = query && query[param] === c.slug;
-    return '<label class="filter-option' + (on ? ' is-active' : '') + '"><input type="checkbox"' + (on ? ' checked' : '') + ' onchange="location.hash=this.checked?\'#/sarees?' + param + '=' + c.slug + '\':\'#/sarees\'"> ' + escapeHtml(c.name) + '</label>';
+    return '<label class="filter-option' + (on ? ' is-active' : '') + '"' + (depth[c.id] ? ' style="padding-left:' + (depth[c.id] * 18) + 'px"' : '') + '><input type="checkbox"' + (on ? ' checked' : '') + ' onchange="location.hash=this.checked?\'#/sarees?' + param + '=' + c.slug + '\':\'#/sarees\'"> ' + escapeHtml(c.name) + '</label>';
   }).join('') + '</div>';
 }
 qs('#sortSelect').addEventListener('change', function () { CatalogState.sort = this.value; Router.rerender(); });
@@ -796,7 +991,9 @@ function renderProductDetail(slug) {
     if (!p) { qs('#pdpContainer').innerHTML = '<div class="empty-state" style="grid-column:1/-1;">Product not found.</div>'; return; }
     PDPState.product = p; PDPState.activeImage = 0; PDPState.activeColor = p.colors[0] ? p.colors[0].name : null; PDPState.qty = 1;
     RecentlyViewed.record(p.id);
-    document.title = p.name + ' | Zari';
+    document.title = Site.pageTitle(p.seoTitle || p.name);
+    var metaDesc = qs('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute('content', p.seoDescription || String(p.description || '').replace(/\s+/g, ' ').slice(0, 160) || (Site.get('seo').meta_description || ''));
     var disc = discountPercent(p.price, p.oldPrice);
     var priced = p.price > 0;
     var outOfStock = priced && p.stock <= 0;
@@ -827,7 +1024,7 @@ function renderProductDetail(slug) {
       ((p.newArrival || p.bestSeller) ? '<div class="pdp-badges">' + (p.newArrival ? '<span class="badge badge-sale">New</span>' : '') + (p.bestSeller ? '<span class="badge badge-best">Best Seller</span>' : '') + '</div>' : '') +
       '<div class="price-row"><span class="price">' + (p.price > 0 ? formatPrice(p.price) : 'Price on request') + '</span>' +
       (p.oldPrice ? '<span class="price-old">' + formatPrice(p.oldPrice) + '</span><span class="discount">' + disc + '% off</span>' : '') + '</div>' +
-      (priced ? '<p class="pdp-tax">Inclusive of all taxes</p>' : '') +
+      (priced && Site.get('tax').prices_include_tax !== false ? '<p class="pdp-tax">Inclusive of all taxes</p>' : priced && Site.get('tax').enabled ? '<p class="pdp-tax">Plus GST at checkout</p>' : '') +
       '<div class="pdp-meta-row"><span>Code ' + escapeHtml(p.sku) + '</span><span class="stock-status stock-' + (priced ? stk.cls : 'in') + '">' + (priced ? stk.text : 'Available to order') + '</span></div>' +
       (p.colors.length ? '<div class="pdp-option"><p class="pdp-option-label">Colour<span>' + escapeHtml(PDPState.activeColor || '') + '</span></p><div class="swatches">' +
         p.colors.map(function (c) { return '<span class="swatch ' + (c.name === PDPState.activeColor ? 'active' : '') + '" style="background:' + escapeHtml(c.hex || '#ccc') + '" onclick="setPdpColor(\'' + escapeHtml(c.name) + '\')" title="' + escapeHtml(c.name) + '"></span>'; }).join('') + '</div></div>' : '') +
@@ -846,8 +1043,9 @@ function renderProductDetail(slug) {
       (p.description ? '<p class="pdp-desc">' + escapeHtml(p.description) + '</p>' : '') +
       '<div id="pdpAccordion">' +
         accordionItemHtml('Product Details', '<table class="pdp-detail-table">' + details.map(function (d) { return '<tr><td>' + escapeHtml(d[0]) + '</td><td>' + escapeHtml(String(d[1])) + '</td></tr>'; }).join('') + '</table>', true) +
-        accordionItemHtml('Delivery Information', 'Delivery availability is checked by PIN code at checkout. Serviceable orders are typically dispatched within 2–4 business days. Enter your PIN above to confirm delivery to your area.', false) +
-        accordionItemHtml('Return &amp; Exchange', 'Returns and exchanges are handled on a case-by-case basis for damaged or wrong items. Please contact support within 48 hours of delivery with your order number and photos. (Final return policy to be confirmed by Zari.)', false) +
+        accordionItemHtml('Delivery Information', 'Delivery availability is checked by PIN code at checkout. Serviceable orders are typically dispatched within ' + escapeHtml(Site.get('shipping').dispatch_days || '2–4 business days') + '. Enter your PIN above to confirm delivery to your area.' +
+          (Cart.FREE_SHIP_OVER > 0 ? ' Delivery is complimentary on orders over ' + formatPrice(Cart.FREE_SHIP_OVER) + '.' : ''), false) +
+        '<div id="pdpReturns">' + accordionItemHtml('Return &amp; Exchange', 'Returns and exchanges are handled on a case-by-case basis for damaged or wrong items. Please contact support within 48 hours of delivery with your order number and photos. (Final return policy to be confirmed by Zari.)', false) + '</div>' +
       '</div>' +
       '</div>';
 
@@ -877,6 +1075,11 @@ function renderProductDetail(slug) {
       sec.style.display = '';
       renderGridInto('#pdpSimilar', list);
     }
+    // Return policy text comes from the admin-managed "returns" page when it exists.
+    Site.page('returns').then(function (pg) {
+      var box = qs('#pdpReturns');
+      if (pg && pg.body && box) box.innerHTML = accordionItemHtml('Return &amp; Exchange', richText(pg.body) + '<p><a href="#/returns" data-link>Read the full policy</a></p>', false);
+    });
     observeReveal(document);
   });
 }
@@ -963,7 +1166,7 @@ function renderCartPage() {
     '<h3>Order Summary</h3>' +
     '<div class="sum-row"><span>Subtotal (' + Cart.count() + ' item' + (Cart.count() === 1 ? '' : 's') + ')</span><span>' + formatPrice(Cart.subtotal()) + '</span></div>' +
     '<div class="sum-row"><span>Delivery</span><span>' + (fee === 0 ? 'Complimentary' : formatPrice(fee)) + '</span></div>' +
-    (fee > 0 ? '<p class="sum-note">Complimentary delivery on orders over ' + formatPrice(Cart.FREE_SHIP_OVER) + '.</p>' : '') +
+    (fee > 0 && Cart.FREE_SHIP_OVER > 0 ? '<p class="sum-note">Complimentary delivery on orders over ' + formatPrice(Cart.FREE_SHIP_OVER) + '.</p>' : '') +
     '<div class="sum-row sum-total"><span>Total</span><span>' + formatPrice(Cart.total()) + '</span></div>' +
     '<a href="#/checkout" class="btn btn-primary btn-block" data-link>Proceed to Checkout</a>' +
     '</aside></div>';
@@ -1002,14 +1205,58 @@ function renderCheckout() {
         '<span style="white-space:nowrap;">' + formatPrice(i.price * i.qty) + '</span></div>';
     }).join('') +
     '</div>' +
-    '<div class="sum-row"><span>Subtotal</span><span>' + formatPrice(Cart.subtotal()) + '</span></div>' +
-    '<div class="sum-row"><span>Delivery Charge</span><span>' + (Cart.deliveryFee() === 0 ? 'Complimentary' : formatPrice(Cart.deliveryFee())) + '</span></div>' +
-    '<div class="sum-row"><span>Discount</span><span>&minus; ' + formatPrice(0) + '</span></div>' +
-    '<div class="sum-row sum-total"><span>Total</span><span>' + formatPrice(Cart.total()) + '</span></div>' +
+    '<div class="coupon-row"><label class="sr-only" for="ckCoupon">Coupon code</label><input id="ckCoupon" maxlength="30" placeholder="Coupon code" autocomplete="off"><button type="button" class="btn btn-ghost btn-sm" id="ckApplyCoupon">Apply</button></div>' +
+    '<p class="sum-note" id="ckCouponMsg" role="status"></p>' +
+    '<div class="sum-row"><span>Subtotal</span><span id="ckSubtotal">' + formatPrice(Cart.subtotal()) + '</span></div>' +
+    '<div class="sum-row"><span>Delivery Charge</span><span id="ckShip">' + (Cart.deliveryFee() === 0 ? 'Complimentary' : formatPrice(Cart.deliveryFee())) + '</span></div>' +
+    '<div class="sum-row"><span>Discount</span><span id="ckDiscount">&minus; ' + formatPrice(0) + '</span></div>' +
+    '<div class="sum-row hidden" id="ckTaxRow"><span id="ckTaxLabel">GST</span><span id="ckTax"></span></div>' +
+    '<div class="sum-row sum-total"><span>Total</span><span id="ckTotal">' + formatPrice(Cart.total()) + '</span></div>' +
+    '<div id="ckAccountMsg"></div>' +
     '<button class="btn btn-primary btn-block" type="submit">Place Order</button>' +
     '<p class="fine-print">Payment via Cashfree is not yet configured for this store — see supabase/functions/cashfree-*.</p>' +
     '</aside>' +
     '</form>';
+
+  // Totals are re-priced on the server from database prices and the store's
+  // shipping/tax settings; a coupon is validated there too.
+  var appliedCoupon = null;
+  function quote(code) {
+    if (IS_DEMO) return;
+    var items = Cart.items.map(function (i) { return { product_id: i.productId, qty: i.qty }; });
+    supabaseClient.rpc('quote_cart', { p_items: items, p_coupon: code || null }).then(function (res) {
+      var msg = qs('#ckCouponMsg');
+      if (res.error) { if (code) msg.innerHTML = '<span class="msg-err">' + escapeHtml(/too many/i.test(res.error.message) ? res.error.message : 'Couldn’t check that coupon right now.') + '</span>'; return; }
+      var q = res.data;
+      qs('#ckSubtotal').textContent = formatPrice(q.subtotal);
+      qs('#ckShip').textContent = Number(q.shipping_fee) === 0 ? 'Complimentary' : formatPrice(q.shipping_fee);
+      qs('#ckDiscount').innerHTML = '&minus; ' + formatPrice(q.discount);
+      qs('#ckTotal').textContent = formatPrice(q.total);
+      var tax = Site.get('tax');
+      qs('#ckTaxRow').classList.toggle('hidden', !(Number(q.tax) > 0));
+      qs('#ckTaxLabel').textContent = 'GST' + (tax.rate_percent ? ' ' + tax.rate_percent + '%' : '') + (tax.prices_include_tax !== false ? ' (included)' : '');
+      qs('#ckTax').textContent = formatPrice(q.tax);
+      if (q.coupon) {
+        appliedCoupon = q.coupon.valid ? q.coupon.code : null;
+        msg.innerHTML = '<span class="' + (q.coupon.valid ? 'msg-ok' : 'msg-err') + '">' + escapeHtml(q.coupon.message || '') + '</span>';
+      } else msg.textContent = '';
+    });
+  }
+  quote(null);
+  qs('#ckApplyCoupon').addEventListener('click', function () {
+    var code = qs('#ckCoupon').value.trim().toUpperCase();
+    if (!code) { appliedCoupon = null; quote(null); return; }
+    if (!/^[A-Z0-9_-]{3,30}$/.test(code)) { qs('#ckCouponMsg').innerHTML = '<span class="msg-err">This coupon code is not valid.</span>'; return; }
+    quote(code);
+  });
+  qs('#ckCoupon').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); qs('#ckApplyCoupon').click(); } });
+  // Suspended accounts can't place orders (also enforced on the server).
+  supabaseClient.rpc('is_customer_active').then(function (res) {
+    if (res.data === false) {
+      qs('#ckAccountMsg').innerHTML = '<p class="sum-note msg-err">Your account can’t place orders right now. Please contact us.</p>';
+      qs('#checkoutForm button[type=submit]').disabled = true;
+    }
+  });
 
   qs('#ckPincode').addEventListener('blur', function () {
     var pin = this.value.trim();
@@ -1098,13 +1345,41 @@ var STATIC_PAGES = {
   privacy: { title: 'Privacy Policy', body: '<p>This Privacy Policy explains how Zari collects, uses and protects your personal information when you shop with us. (Add your finalized policy text here before launch.)</p>' },
   terms: { title: 'Terms of Service', body: '<p>By using the Zari website you agree to these terms. (Add your finalized terms text here before launch.)</p>' },
   'shipping-info': { title: 'Shipping Information', body: '<p>We currently check delivery serviceability by PIN code at checkout. Shipping partners and timelines will be listed here once finalized.</p>' },
-  faq: { title: 'Frequently Asked Questions', body: '<p>Answers to common questions about sizing, fabric care, shipping and returns will appear here.</p>' }
+  faq: { title: 'Frequently Asked Questions', body: '<p>Answers to common questions about sizing, fabric care, shipping and returns will appear here.</p>' },
+  returns: { title: 'Return &amp; Refund Policy', body: '<p>Returns and exchanges are handled on a case-by-case basis for damaged or wrong items. Please contact support within 48 hours of delivery with your order number and photos. (Final return policy to be confirmed by Zari.)</p>' }
 };
-function renderStatic(key) {
-  var page = STATIC_PAGES[key];
-  if (!page) { Router.notFound(); return; }
-  document.title = page.title + ' | Zari';
-  qs('#staticContainer').innerHTML = '<div class="page-head"><nav class="crumbs"><a href="#/" data-link>Home</a><span>/</span><span>' + page.title + '</span></nav><h1 class="page-title">' + page.title + '</h1></div><div class="prose">' + page.body + '</div>';
+// Page text comes from the admin (content_pages); the built-in text above is the
+// fallback if the database can't be reached. Custom pages live at #/page/<slug>.
+function renderStatic(key, isCustom) {
+  var fallback = isCustom ? null : STATIC_PAGES[key];
+  var box = qs('#staticContainer');
+  box.innerHTML = '<div class="page-head"><div class="skeleton skeleton-line" style="width:40%;height:44px;"></div></div>';
+  Site.page(key).then(function (pg) {
+    if (!pg && !fallback) { Router.notFound(); return; }
+    var title = pg ? escapeHtml(pg.title) : fallback.title;
+    var body = pg ? richText(pg.body) : fallback.body;
+    document.title = Site.pageTitle(pg ? (pg.seo_title || pg.title) : fallback.title.replace(/&amp;/g, '&'));
+    if (pg && pg.seo_description) { var md = qs('meta[name="description"]'); if (md) md.setAttribute('content', pg.seo_description); }
+    var extra = '';
+    if (key === 'contact') {
+      var c = Site.get('contact');
+      var rows = [
+        c.email ? '<p><strong>Email</strong><br><a href="mailto:' + escapeHtml(c.email) + '">' + escapeHtml(c.email) + '</a></p>' : '',
+        c.phone ? '<p><strong>Phone</strong><br><a href="tel:' + escapeHtml(c.phone.replace(/\s+/g, '')) + '">' + escapeHtml(c.phone) + '</a></p>' : '',
+        c.whatsapp ? '<p><strong>WhatsApp</strong><br><a href="https://wa.me/' + escapeHtml(String(c.whatsapp).replace(/\D/g, '')) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(c.whatsapp) + '</a></p>' : '',
+        c.address ? '<p><strong>Address</strong><br>' + escapeHtml(c.address).replace(/\n/g, '<br>') + '</p>' : '',
+        c.hours ? '<p><strong>Hours</strong><br>' + escapeHtml(c.hours) + '</p>' : ''
+      ].join('');
+      extra = rows + (c.email ? '<p><a class="btn btn-primary" href="mailto:' + escapeHtml(c.email) + '">Email us</a></p>' : '');
+    }
+    box.innerHTML = '<div class="page-head"><nav class="crumbs"><a href="#/" data-link>Home</a><span>/</span><span>' + title + '</span></nav><h1 class="page-title">' + title + '</h1></div><div class="prose">' + body + extra + '</div><div id="faqList"></div>';
+    if (key === 'faq') {
+      supabaseClient.from('faq_items').select('question,answer').eq('is_visible', true).order('sort_order').then(function (r) {
+        var items = r.data || [];
+        if (items.length) qs('#faqList').innerHTML = '<div style="max-width:720px;margin-top:32px;">' + items.map(function (f) { return accordionItemHtml(escapeHtml(f.question), richText(f.answer), false); }).join('') + '</div>';
+      });
+    }
+  });
 }
 
 /* ---------------------------------------------------------
@@ -1166,7 +1441,7 @@ var Router = {
     var navKey = parts[0] || 'home';
     if (navKey === 'sarees' && (query.featured || query.best || query.sale)) navKey = '';
     qsa('#mainNav a').forEach(function (a) { a.classList.toggle('active', a.getAttribute('data-nav') === navKey); });
-    document.title = 'Zari | Sarees for Every Story'; // PDP / static pages override this
+    document.title = (Site.get('seo').meta_title) || 'Zari | Sarees for Every Story'; // PDP / static pages override this
 
     if (path === '/') { this.show('home'); renderHome(); }
     else if (parts[0] === 'sarees' || parts[0] === 'new-arrivals' || parts[0] === 'collections' || parts[0] === 'occasions' || parts[0] === 'offers' || parts[0] === 'search') { this.show('catalog'); renderCatalog(parts[0], query); }
@@ -1176,6 +1451,7 @@ var Router = {
     else if (parts[0] === 'cart') { this.show('cart'); renderCartPage(); }
     else if (parts[0] === 'account') { this.show('account'); renderAccount(parts[1]); }
     else if (STATIC_PAGES[parts[0]]) { this.show('static'); renderStatic(parts[0]); }
+    else if (parts[0] === 'page' && parts[1] && /^[a-z0-9-]{2,60}$/.test(parts[1])) { this.show('static'); renderStatic(parts[1], true); }
     else { this.notFound(); }
   }
 };

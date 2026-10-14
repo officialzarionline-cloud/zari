@@ -18,15 +18,14 @@ Static HTML/CSS/JS SPA (`index.html`, `style.css`, `script.js`) + Supabase
      inventory rows from the supplier's own product list as **draft** products (price 0,
      no images) so you have real SKUs to fill in rather than starting from zero. See
      "Imported inventory" below.
-   - Update `SUPABASE_URL` / `SUPABASE_ANON_KEY` in [`supabase-client.js`](supabase-client.js).
-     Until this is done the storefront runs in **preview mode** ([`demo-data.js`](demo-data.js)):
-     12 clearly-labelled sample products with generated placeholder images and a gold
-     "Preview mode" bar. It switches off automatically once the real URL is set, and any
-     sample items left in a visitor's bag/wishlist are dropped. No sample reviews/orders.
-   - Create your admin user, then insert their `auth.users.id` into the `admins` table.
-   - **Create two Storage buckets, both set to Public**: `banners` and `products`.
-     These back the image-upload UI in Admin → Banners and Admin → Products; until
-     they exist, uploads fail with a clear toast telling you which bucket is missing.
+   - Paste the project's anon key into `SUPABASE_ANON_KEY` in [`supabase-client.js`](supabase-client.js)
+     (the URL is already set). Until this is done the storefront runs in **preview mode**
+     ([`demo-data.js`](demo-data.js)) and any sample items left in a visitor's bag/wishlist
+     are dropped once it switches off.
+   - Run migration `0004_admin_system.sql` too — it creates the Storage buckets
+     (`products`, `banners`, `site`), roles, settings and everything the admin panel needs.
+   - Create the first Super Admin and deploy the `admin-api` function — step by step in
+     **[ADMIN_SETUP.md](ADMIN_SETUP.md)**.
 2. **Add real products** via SQL/admin (never fake data — see rule in the build brief).
    Nothing renders until `products.status = 'active'` rows exist.
 
@@ -100,13 +99,24 @@ switch Status to Active.
 - Homepage rails each have a "View All" link: New Arrivals, Featured Sarees, Best
   Sellers, Special Offers, Recommended, plus Shop by Category/Fabric/Occasion.
   Catalog supports `?featured=1`, `?best=1`, `?sale=1`, `/offers`, sort by discount.
-- RLS on every customer-facing table; `is_admin()` gate for admin-only writes.
+- RLS on every table; admin writes are gated per module by role (`admin_has_perm()`).
+
+## Admin panel (`/admin`)
+Separate admin login with roles (Super Admin, Store Manager, Catalogue Manager, Order
+Manager, Content Editor, plus custom roles), and modules for: dashboard (real totals,
+30-day sales, low stock, recent activity), products (bulk edit, CSV import/export,
+duplicate, image upload/reorder/optimise, variants, SEO), categories & subcategories,
+homepage sections and product rails, banners/promos/announcement/campaigns, coupons,
+orders (status, shipping & tracking, refunds, cancel with restock, invoices, CSV
+export), customers (profiles, addresses, history, suspend), reviews, pages & FAQ &
+footer, website settings, admin users & roles, and an immutable activity log.
+Setup, security notes and roles: **[ADMIN_SETUP.md](ADMIN_SETUP.md)**. Tests:
+`supabase/tests/`.
 
 ## Not yet built (next phases — see build brief phases G–J)
-- Admin: shipping provider settings UI, media library (browse-all-uploads view),
-  dedicated customers detail view.
+- Admin: shipping provider settings UI, media library (browse-all-uploads view).
 - Live payment + live shipping provider wiring (needs Zari's own credentials).
-- Realtime shipment tracking UI, secondary delivery number, invoices.
+- Realtime shipment tracking UI, secondary delivery number.
 - Complete the Look / accessories cross-sell (schema is ready — `complete_the_look` table —
   UI is scaffolded but hidden until admin links real products).
 - Find Your Saree quiz, shop-by-budget ranges, verified-review submission flow,
