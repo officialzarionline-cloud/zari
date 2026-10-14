@@ -13,7 +13,7 @@
    the admin panel shows a "connect the database" screen.
    ========================================================= */
 var SUPABASE_URL = 'https://sjtrbsocepsfmrvgwuei.supabase.co';
-var SUPABASE_ANON_KEY = 'YOUR-ZARI-ANON-KEY';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqdHJic29jZXBzZm1ydmd3dWVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg1NDM2NTMsImV4cCI6MjEwNDExOTY1M30.JQ1rcMpjSAP1Mr9ky8n5vI1DJoo5BaZPySdmA3pe4FY';
 
 // The admin panel (/admin) keeps its own login session, separate from shoppers'
 // sessions on the store, so signing in/out of one never affects the other.
